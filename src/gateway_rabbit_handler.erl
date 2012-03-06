@@ -219,18 +219,18 @@ handle_info({#'basic.deliver'{delivery_tag = Tag}, Content},
 bind_refs(Link, #state{channel = Channel, sessionid = SessionId, api_key = ApiKey})->
   case hd(proplists:get_value(<<"ref">>, element(1, Link))) of
     <<"client">> -> case gateway_util:extract_binpathchain_from_nowref(Link) of
-                      {ok, Pathchain} ->
+                      Pathchain ->
                         QueueDeclare = #'queue.declare'{
                                           queue = list_to_binary(["C_", lists:nth(2,Pathchain)])
                                        },
                                       #'queue.declare_ok'{queue = QueueName} = amqp_channel:call(Channel, QueueDeclare),
+                        RoutingKey = list_to_binary([ApiKey, <<".">>, lists:nth(1, Pathchain), <<".">>, lists:nth(2, Pathchain), <<".#">>]),
+                        gateway_util:info(RoutingKey),
                         QueueBinding = #'queue.bind'{queue = QueueName,
                                         exchange = list_to_binary(["T_", SessionId]),
-                                        routing_key = list_to_binary([ApiKey, <<".">>, lists:sublists(Pathchain, 2), <<".*">>])},
+                                        routing_key = RoutingKey},
                         #'queue.bind_ok'{} = amqp_channel:call(Channel, QueueBinding),
-                        true;
-                      {fail, _} ->
-                        false
+                        true
                      end;
                _ -> ok
   end.
