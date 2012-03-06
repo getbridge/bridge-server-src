@@ -1,6 +1,6 @@
 {application,gateway,
              [{description,"Bridge Connection Gateway"},
-              {vsn,"0.1.1"},
+              {vsn,"0.1.2"},
               {registered,[]},
               {applications,[kernel,stdlib,inets,sockjs]},
               {mod,{gateway_app,[]}},

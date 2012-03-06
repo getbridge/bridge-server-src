@@ -21,7 +21,17 @@ start_link() ->
 % --------------------------
 
 init([]) ->
-    case amqp_connection:start(#amqp_params_network{}) of
+    {ok, Hostname} = inet:gethostname(),
+    Node = erlang:list_to_atom("rabbit@" ++ Hostname),
+
+    Connect = case net_adm:ping(Node) of
+        pong -> gateway_util:info("Connecting using direct messaging"),
+                #amqp_params_direct{node = Node};
+        pang -> gateway_util:warn("Connecting using network messaging"),
+                #amqp_params_network{}
+    end,
+
+    case amqp_connection:start(Connect) of
       {ok, Connection} -> ok;
                      _ -> gateway_util:error("~nCannot connect to Rabbit server~n"),
                           Connection = false,
