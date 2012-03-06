@@ -218,7 +218,7 @@ handle_info({#'basic.deliver'{delivery_tag = Tag}, Content},
 
 bind_refs(Link, #state{channel = Channel, sessionid = SessionId, api_key = ApiKey})->
   case hd(proplists:get_value(<<"ref">>, element(1, Link))) of
-    <<"client">> -> case gateway_util:binpathchain_from_nowref(Link) of
+    <<"client">> -> case gateway_util:extract_binpathchain_from_nowref(Link) of
                       {ok, Pathchain} ->
                         QueueDeclare = #'queue.declare'{
                                           queue = list_to_binary(["C_", lists:nth(2,Pathchain)])
