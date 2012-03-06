@@ -17,9 +17,10 @@ VER=`find . -maxdepth 1 -type d | grep -vE '^\.$' | head -n1 | sed 's/^\.\///g'`
 echo "Ver: ${VER}, renaming .rel + .boot files correctly"
 cd "${VER}"
 mv bc.boot start.boot
-mv bc.rel "bc-${VER}.rel"
+cp bc.rel "bc-${VER}.rel"
 cd ../../bin
 mv bc start
 cd ../../
+rm -rf "bc_rel-${VER}"
 mv bc "bc_rel-${VER}"
 echo "OK"
