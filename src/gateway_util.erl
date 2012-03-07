@@ -80,6 +80,7 @@ now_decode_helper(Thing, Links) ->
   case Thing of
     List when is_list(Thing) ->
       lists:foldl(fun gateway_util:now_decode_helper/2, Links, List);
+    {[]} -> Links;
     {KeyValuePairs} when is_list(KeyValuePairs) ->
       case element(1, hd(KeyValuePairs)) of
         <<"ref">> -> 
