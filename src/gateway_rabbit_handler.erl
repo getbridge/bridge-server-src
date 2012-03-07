@@ -225,7 +225,6 @@ bind_refs(Link, #state{channel = Channel, sessionid = SessionId, api_key = ApiKe
                                        },
                                       #'queue.declare_ok'{queue = QueueName} = amqp_channel:call(Channel, QueueDeclare),
                         RoutingKey = list_to_binary([ApiKey, <<".">>, lists:nth(1, Pathchain), <<".">>, lists:nth(2, Pathchain), <<".#">>]),
-                        gateway_util:info(RoutingKey),
                         QueueBinding = #'queue.bind'{queue = QueueName,
                                         exchange = list_to_binary(["T_", SessionId]),
                                         routing_key = RoutingKey},
