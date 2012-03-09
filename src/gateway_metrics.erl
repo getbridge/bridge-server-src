@@ -34,7 +34,7 @@ handle_call(stop, _From, State) ->
   {stop, normal, stopped, State};
 
 handle_call(_Msg, _From, State) ->
-  gateway_util:warn("Unknown Command: ~p~n", [_Msg]),
+  gateway_util:warn("Error #210 : Unknown Command: ~p~n", [_Msg]),
   {reply, unknown_command, State}.
 
 handle_cast({send_app_usage, PrivKey, Usage}, State = #state{redirector_url = Redirector}) ->
@@ -45,7 +45,7 @@ handle_cast({send_app_usage, PrivKey, Usage}, State = #state{redirector_url = Re
       {receiver, fun (Val) ->
             case Val of
               {_, {error, Reason}} ->
-                gateway_util:error("Error in metering ctl request: ~p~n", [Reason]);
+                gateway_util:error("Error #211 : Error in metering ctl request: ~p~n", [Reason]);
               {_, _} -> ok
             end
         end}
@@ -56,7 +56,7 @@ handle_cast({server_usage_update, UsageAdd}, State = #state{server_usage = Usage
   {noreply, State#state{server_usage = Usage + UsageAdd}};
   
 handle_cast(_Msg, State) ->
-  gateway_util:warn("Unknown Command: ~p~n", [_Msg]),
+  gateway_util:warn("Error #209 : Unknown Command: ~p~n", [_Msg]),
   {noreply, State}.
 
 handle_info(send_server_usage, State = #state{bridgeid = BridgeId, redirector_url = Redirector, server_usage = Usage}) ->
@@ -67,7 +67,7 @@ handle_info(send_server_usage, State = #state{bridgeid = BridgeId, redirector_ur
       {receiver, fun (Val) ->
             case Val of
               {_, {error, Reason}} ->
-                gateway_util:error("Error in add server to redirector: ~p~n", [Reason]);
+                gateway_util:error("Error #208 : Failed to send server usage to redirector: ~p~n", [Reason]);
               {_, _} -> ok
             end
         end}
@@ -76,7 +76,7 @@ handle_info(send_server_usage, State = #state{bridgeid = BridgeId, redirector_ur
   {noreply, State#state{server_usage = 0}};
   
 handle_info(_Info, State) ->
-  gateway_util:warn("Unknown Info: Ignoring: ~p~n", [_Info]),
+  gateway_util:warn("Error #207 : Unknown Info: Ignoring: ~p~n", [_Info]),
   {noreply, State}.
 
 terminate(_Reason, _State) ->
@@ -98,7 +98,7 @@ report_add_server(Hostname, TCPPort, WebPort) ->
       {receiver, fun (Val) ->
             case Val of
               {_, {error, Reason}} ->
-                gateway_util:error("Error in add server to redirector: ~p~n", [Reason]);
+                gateway_util:error("Error #206 : in add server to redirector: ~p~n", [Reason]);
               {_, {{_, 200, _}, _, RawData}} -> {ok, JSONDecoded} = sockjs_util:decode(RawData),
                                                 {PropList} = JSONDecoded,
                                                 {DataList} = proplists:get_value(<<"data">>, PropList),
@@ -106,7 +106,7 @@ report_add_server(Hostname, TCPPort, WebPort) ->
                                                 lists:map(fun ([PubKey, PrivKey]) ->
                                                             ctl_handler:add_key(PrivKey, PubKey)
                                                           end, AppList);
-              {_, _} -> gateway_util:error("Error in add server to redirector")
+              {_, _} -> gateway_util:error("Error #206 : in add server to redirector")
             end
         end}
   ]).

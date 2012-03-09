@@ -15,7 +15,7 @@ handle(Req, State) ->
     req_handler(State, Body, Req2)
   catch
     _:Reason ->
-      gateway_util:error("Error in ctl_handler:handle/2 -> ~p~n", [Reason]),
+      gateway_util:error("Error #218 : Error in ctl_handler handling cowboy request: ~p~n", [Reason]),
       {ok, Req3} = cowboy_http_req:reply(400, [], <<"badarg">>, Req),
       {ok, Req3, State}
   end.
@@ -114,8 +114,7 @@ update_metering(PrivKey) ->
     end
   catch
     _:Reason ->
-      erlang:display(erlang:get_stacktrace()),
-      gateway_util:error("Error in ctl_handler:update_metering/1: ~p~n", [Reason]),
+      gateway_util:error("Error #219 : Error in ctl_handler:update_metering/1: ~p, ~p~n", [Reason, erlang:get_stacktrace()]),
       error
   end.
 

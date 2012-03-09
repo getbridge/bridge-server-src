@@ -45,7 +45,7 @@ mqb_handle(Conn, closed) ->
             gateway_util:info("~s: Connection closed~n", [SockId]),
             true;
         _ ->
-            gateway_util:error("Failed1 to find sockjs connection for ~p ~p~n", [SockId, LookUp]),
+            gateway_util:error("Error #201: Failed to find sockjs connection for ~p ~p~n", [SockId, LookUp]),
             false
     end,
     ok;
@@ -58,7 +58,7 @@ mqb_handle(Conn, {recv, Data}) ->
             gen_server:cast(Handler, {msg, Data}),
             true;
         _ ->
-            gateway_util:error("Failed2 to find sockjs connection for ~p ~p~n", [SockId, LookUp]),
+            gateway_util:error("Error #202: Failed to find sockjs connection for ~p ~p~n", [SockId, LookUp]),
             false
     end,
     ok.
@@ -72,7 +72,7 @@ send(#gateway_connection{impl=Conn}, Data) ->
       [{SockId, #gateway_connection{impl=Conn}}] ->
           Conn:send(Data);
       _ ->
-          gateway_util:error("Failed3 to find sockjs connection for ~p ~p~n", [SockId, LookUp]),
+          gateway_util:error("Error #203: Failed to find sockjs connection for ~p ~p~n", [SockId, LookUp]),
           false
   end.
 

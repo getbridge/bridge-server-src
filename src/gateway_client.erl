@@ -22,7 +22,7 @@ init([]) ->
   {ok, #state{}}.
 
 handle_join_worker_pool(_, State = #state{privilege = unpriv}) ->
-  gen_server:cast(self(), {error, "Publish service permissions denied"}),
+  gen_server:cast(self(), {error, 102, "Publish service permissions denied"}),
   State;
 handle_join_worker_pool(DataList, State = #state{rabbit_handler = RabbitHandler
                                                  , sessionid = SessionId
@@ -42,7 +42,7 @@ handle_join_worker_pool(DataList, State = #state{rabbit_handler = RabbitHandler
                    ],
                    gen_server:cast(RabbitHandler, {publish_message, SessionId, Message})
             end;
-    false -> gen_server:cast(self(), {error, <<"Invalid service name: ", Name/binary>>})
+    false -> gen_server:cast(self(), {error, 103, <<"Invalid service name: ", Name/binary>>})
   end,
   State.
 
@@ -59,7 +59,7 @@ handle_getops(DataList, State = #state{rabbit_handler = RabbitHandler, sessionid
   State.
 
 handle_join_channel(_, State = #state{privilege = unpriv}) ->
-  gen_server:cast(self(), {error, "Join channel permissions denied"}),
+  gen_server:cast(self(), {error, 104, "Join channel permissions denied"}),
   State;
 handle_join_channel(DataList, State = #state{rabbit_handler = RabbitHandler, privilege = priv}) ->
   Callback = proplists:get_value(<<"callback">>, DataList),
@@ -91,12 +91,12 @@ handle_join_channel(DataList, State = #state{rabbit_handler = RabbitHandler, pri
                            ]
             end,
             gen_server:cast(RabbitHandler, {publish_message, HandlerSessionId, Message});
-    false -> gen_server:cast(self(), {error, <<"Invalid channel name: ", Name/binary>>})
+    false -> gen_server:cast(self(), {error, 105, <<"Invalid channel name: ", Name/binary>>})
   end,
   State.
 
 handle_get_channel(_, State = #state{privilege = unpriv}) ->
-  gen_server:cast(self(), {error, "Get channel permissions denied"}),
+  gen_server:cast(self(), {error, 106, "Get channel permissions denied"}),
   State;
 handle_get_channel(DataList, State = #state{rabbit_handler = RabbitHandler
                                             , sessionid = SessionId
@@ -110,13 +110,13 @@ handle_get_channel(DataList, State = #state{rabbit_handler = RabbitHandler
               undefined -> State;
                       _ -> handle_getops([{<<"name">>, <<"channel:", Name/binary>>}, {<<"callback">>, Callback}], State)
             end;
-    false -> gen_server:cast(self(), {error, <<"Invalid channel name: ", Name/binary>>}),
+    false -> gen_server:cast(self(), {error, 107, <<"Invalid channel name: ", Name/binary>>}),
              State
   end,
   State.
 
 handle_leave_channel(_, State = #state{privilege = unpriv}) ->
-  gen_server:cast(self(), {error, "Leave channel permissions denied"}),
+  gen_server:cast(self(), {error, 108, "Leave channel permissions denied"}),
   State;
 handle_leave_channel(DataList, State = #state{rabbit_handler = RabbitHandler
                                               , sessionid = SessionId
@@ -136,7 +136,7 @@ handle_leave_channel(DataList, State = #state{rabbit_handler = RabbitHandler
               ],
 
             gen_server:cast(RabbitHandler, {publish_message, SessionId, Message});
-    false -> gen_server:cast(self(), {error, <<"Invalid channel name: ", Name/binary>>})
+    false -> gen_server:cast(self(), {error, 109, <<"Invalid channel name: ", Name/binary>>})
   end,
   State.
 
@@ -150,9 +150,9 @@ handle_send(Data, State = #state{sessionid = SessionId, rabbit_handler = RabbitH
   
   if
     ChannelCall ->
-      gen_server:cast(self(), {error, "Channel call permission denied"});
+      gen_server:cast(self(), {error, 110, "Channel call permission denied"});
     SystemCall ->
-      gen_server:cast(self(), {error, "System service calls are not allowed"});
+      gen_server:cast(self(), {error, 111, "System service calls are not allowed"});
     true ->
       gen_server:cast(RabbitHandler, {publish_message, SessionId, Data})
   end,
@@ -178,7 +178,7 @@ handle_connect(DataList, State = #state{outbound_connection = OutboundConnection
   
   case ctl_handler:lookup_priv(ApiKey) of
     false ->
-      gen_server:cast(self(), {error, "No valid api key provided."}),
+      gen_server:cast(self(), {error, 220, "No valid api key provided."}),
       State#state{sessionid = Id, outbound_connection = OutConn};
     {Privilege, BinApiKey} ->
       Mod:send(OutConn, list_to_binary(lists:concat([Id, "|", Secret]))),
@@ -217,11 +217,11 @@ handle_cast({msg, RawData}, State) ->
       <<"GETOPS">> ->
         handle_getops(DataList, State);
       _ ->
-        gateway_util:warn("Unrecognized Command: ~p~n", [Command]),
+        gen_server:cast(self(), {error, 221, ["Unrecognized Command", Command]}),
         State
     end}
   catch
-    _:Reason -> gen_server:cast(self(), {error, [Reason, erlang:get_stacktrace()]}),
+    _:Reason -> gen_server:cast(self(), {error, 222, ["Error handling messaged", Reason, erlang:get_stacktrace()]}),
     {noreply, State}
   end;
 
@@ -230,17 +230,17 @@ handle_cast({send, Data}, State = #state{outbound_connection = OutboundConnectio
     ok ->
       Mod:send(OutboundConnection, Data);
     {timeout, Left}  ->
-      gen_server:cast(self(), {error, "API limit reached. Disabled for (seconds) " ++ integer_to_list(Left)});
+      gen_server:cast(self(), {error, 112, "API limit reached. Disabled for (seconds) " ++ integer_to_list(Left)});
     _ ->
-      gen_server:cast(self(), {error, "API limit error"})
+      gen_server:cast(self(), {error, 303, "Unknown API management internal error"})
   end,
   {noreply, State};
 handle_cast({force_send, Data}, State = #state{outbound_connection = OutboundConnection = #gateway_connection{callback_module = Mod}}) ->
   Mod:send(OutboundConnection, Data),
   {noreply, State};
 
-handle_cast({error, Message}, State = #state{sessionid = SessionId}) ->  
-  ErrorMessage = io_lib:format("Error [~p]: ~p", [SessionId, Message]),
+handle_cast({error, ErrorId, Message}, State = #state{sessionid = SessionId}) ->  
+  ErrorMessage = io_lib:format("Error #~p [~p] : ~p", [ErrorId, SessionId, Message]),
   gateway_util:error(string:concat(ErrorMessage, "~n")),
 
   case SessionId of
@@ -263,18 +263,18 @@ handle_cast(stop, State) ->
   gateway_util:info("Stop Cast: Stopping.~n"),
   {stop, normal, State};
 handle_cast(_Msg, State) ->
-  gateway_util:warn("Unknown Command: ~p~n", [_Msg]),
+  gateway_util:warn("Error #223 : Unknown Command: ~p~n", [_Msg]),
   {noreply, State}.
 
 handle_call({ready, OutConn}, _From, State) ->
   {reply, ok, State#state{outbound_connection = OutConn}};
 
 handle_call(_Msg, _From, State) ->
-  gateway_util:warn("Unknown Command: ~p~n", [_Msg]),
+  gateway_util:warn("Error #224 : Unknown Command: ~p~n", [_Msg]),
   {reply, unknown_command, State}.
 
 handle_info(_Info, State) ->
-  gateway_util:warn("Unknown Info: Ignoring: ~p~n", [_Info]),
+  gateway_util:warn("Error #225 : Unknown Info: Ignoring: ~p~n", [_Info]),
   {noreply, State}.
 
 terminate(_, #state{sessionid = Id, rabbit_handler=RabbitHandler, outbound_connection = OutConn = #gateway_connection{callback_module = Mod}}) ->

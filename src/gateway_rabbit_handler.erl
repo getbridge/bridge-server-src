@@ -64,7 +64,11 @@ handle_call({ready, Protocol, SessionId, ApiKey}, _From,
       sessionid=SessionId,
       api_key = ApiKey
     }
-  }.
+  };
+  
+handle_call(_Msg, _From, State) ->
+  gateway_util:warn("Error #213 : Unknown Command: ~p~n", [_Msg]),
+  {reply, unknown_command, State}.
 
 handle_cast({change_protocol, Protocol}, State) ->
   {noreply, State#state{protocol=Protocol}};
@@ -139,14 +143,14 @@ handle_cast({publish_message, SessionId, Message}, State = #state{channel = Chan
           amqp_channel:call(Channel, BasicPublish, Content),
           {noreply, State};
         {timeout, Left} ->
-          gen_server:cast(Protocol, {error, "API limit reached. Disabled for (seconds) " ++ integer_to_list(Left)}),
+          gen_server:cast(Protocol, {error, 101, "API limit reached. Disabled for (seconds) " ++ integer_to_list(Left)}),
           {noreply, State};
         _ ->
-          gen_server:cast(Protocol, {error, "Unknown internal error."}),
+          gen_server:cast(Protocol, {error, 301, "Unknown API management internal error"}),
           {noreply, State}
       end;
     {fail, Reason} ->
-      gen_server:cast(Protocol, {error, Reason}),
+      gen_server:cast(Protocol, {error, 204, ["Failed parse message destination", Reason]}),
       {noreply, State}
   end;
 
@@ -173,7 +177,7 @@ handle_cast(resume_subs, State = #state{channel = Channel, subscriptions = Subsc
   {noreply, State#state{subscriptions=Subs}};
 
 handle_cast(_Msg, State) ->
-  gateway_util:warn("Unknown Command: ~p~n", [_Msg]),
+  gateway_util:warn("Error #212 : Unknown Command: ~p~n", [_Msg]),
   {noreply, State}.
 
 handle_info(close, State = #state{sessionid = Id}) ->
@@ -186,7 +190,8 @@ handle_info(#'basic.consume_ok'{}, State = #state{channel = _Channel}) ->
 handle_info(#'basic.cancel_ok'{}, State = #state{channel = _Channel}) ->
   {noreply, State};
 handle_info({#'basic.return'{exchange = Exchange, routing_key = Key}, _Content}, State = #state{protocol = Protocol}) ->
-  gen_server:cast(Protocol, {error, <<"Failed to deliver message to ", Key/binary, " from ", Exchange/binary>>}),
+  {ErrorCode, ErrorMsg} = gateway_util:basic_return_error(Key, Exchange),
+  gen_server:cast(Protocol, {error, ErrorCode, ErrorMsg}),
   {noreply, State};
 
 handle_info({#'basic.deliver'{delivery_tag = Tag}, Content},
@@ -212,8 +217,12 @@ handle_info({#'basic.deliver'{delivery_tag = Tag}, Content},
                 end
     end
   catch
-    Reason -> gen_server:cast(Protocol, {error, [Reason, erlang:get_stacktrace()]})
+    Reason -> gen_server:cast(Protocol, {error, 205, ["Could not parse message delivery", Reason, erlang:get_stacktrace()]})
   end,
+  {noreply, State};
+  
+handle_info(_Info, State) ->
+  gateway_util:warn("Error #214 : Unknown Info: Ignoring: ~p~n", [_Info]),
   {noreply, State}.
 
 bind_refs(Link, #state{channel = Channel, sessionid = SessionId, api_key = ApiKey})->
