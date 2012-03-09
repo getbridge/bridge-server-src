@@ -114,5 +114,15 @@ timestamp() ->
 display_log(Val) ->
   error_logger:tty(Val).
   
-basic_return_error(Msg, Exchange) ->
-  {0 ,0}.
+basic_return_error(Key, Exchange) ->
+  [_, Type, Id | Rest] = binary:split(Key, <<".">>, [global]),
+  Destination = case Rest of
+    [Service, Method] -> <<Service/binary, ".", Method/binary>>;
+    [Service] -> Service
+  end,
+  case Type of
+    <<"client">> -> {226, <<"Could not deliver message ", Destination/binary, " to offline client: ", Id/binary>>};
+    <<"named">> -> {227, <<"Could not deliver message ", Destination/binary, " to unavailable service: ", Id/binary>>};
+    <<"channel">> -> {228, <<"Could not deliver message ", Destination/binary, " to unavailable channel: ", Id/binary>>};
+    _ -> {304, Key}
+  end.
