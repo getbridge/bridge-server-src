@@ -22,10 +22,10 @@ init()->
                     }]
                   }],
        cowboy:start_listener(http, 100,
-                             cowboy_tcp_transport, [{port,     WebPort}],
+                             cowboy_tcp_transport, [{port,     WebPort}, {max_connections, 100000}],
                              cowboy_http_protocol, [{dispatch, Dispatch}]),
        cowboy:start_listener(tcp, 100,
-                             cowboy_tcp_transport, [{port, TCPPort }],
+                             cowboy_tcp_transport, [{port, TCPPort }, {max_connections, 100000}],
                              simple_framed_protocol, [{handler, none}]),
 
        CtlDispatch = [{'_', 
