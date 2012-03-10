@@ -82,11 +82,11 @@ now_decode_helper(Thing, Links) ->
       lists:foldl(fun gateway_util:now_decode_helper/2, Links, List);
     {[]} -> Links;
     {KeyValuePairs} when is_list(KeyValuePairs) ->
-      case element(1, hd(KeyValuePairs)) of
-        <<"ref">> -> 
-          [{KeyValuePairs} | Links];
+      case proplists:get_value(<<"ref">>, KeyValuePairs) of
+        undefined -> 
+          lists:foldl(fun ({_Key, Value}, Acc) -> now_decode_helper(Value, Acc) end, Links, KeyValuePairs);
         _         ->
-          lists:foldl(fun ({_Key, Value}, Acc) -> now_decode_helper(Value, Acc) end, Links, KeyValuePairs)
+          [{KeyValuePairs} | Links]
       end;
     _ -> Links
   end.
