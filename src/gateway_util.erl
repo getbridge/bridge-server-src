@@ -114,7 +114,7 @@ timestamp() ->
 display_log(Val) ->
   error_logger:tty(Val).
   
-basic_return_error(Key, Exchange) ->
+basic_return_error(Key, _Exchange) ->
   [_, Type, Id | Rest] = binary:split(Key, <<".">>, [global]),
   Destination = case Rest of
     [Service, Method] -> <<Service/binary, ".", Method/binary>>;

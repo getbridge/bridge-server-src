@@ -49,7 +49,7 @@ handle_join_worker_pool(DataList, State = #state{rabbit_handler = RabbitHandler
 handle_getops(DataList, State = #state{rabbit_handler = RabbitHandler, sessionid = SessionId}) ->
   Callback = proplists:get_value(<<"callback">>, DataList),
   Name = proplists:get_value(<<"name">>, DataList),
-  DestPath = [ <<"named">>, Name, <<"system">>, <<"getservice">> ],
+  DestPath = [ <<"named">>, Name, <<"system">>, <<"getService">> ],
   DestRef = gateway_util:binpathchain_to_nowref(DestPath),
   Message =   [
                 {<<"destination">>,  DestRef},
@@ -70,7 +70,7 @@ handle_join_channel(DataList, State = #state{rabbit_handler = RabbitHandler, pri
     true -> HandlerBinPathChain = gateway_util:extract_binpathchain_from_nowref(Handler),
             HandlerSessionId = lists:nth(2, HandlerBinPathChain),
 
-            HookBinPath = [ <<"client">>, HandlerSessionId, <<"system">>, <<"hook_channel_handler">> ],
+            HookBinPath = [ <<"client">>, HandlerSessionId, <<"system">>, <<"hookChannelHandler">> ],
             HookRef = gateway_util:binpathchain_to_nowref(HookBinPath),
 
             gen_server:cast(RabbitHandler, {join_channel, Name, binary_to_list(HandlerSessionId)}),
