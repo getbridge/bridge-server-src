@@ -11,10 +11,6 @@
 -export([send/2, close/1]).
 
 
-dispatcher() ->
-    [{bridge, fun handle_sockjs/2}].
-
-
 % Create SessionId, and register Connection with SessionId
 handle_sockjs(Conn, init) ->
     {ok, Handler} = gateway_client_sup:start_child(),
@@ -40,7 +36,7 @@ handle_sockjs(Conn, closed) ->
 handle_sockjs(Conn, {recv, Data}) ->
     LookUp = ets:lookup(sockjs_handler_table, Conn),
     case LookUp of
-        [{SockId, #gateway_connection{client = Handler}}] ->
+        [{Conn, #gateway_connection{client = Handler}}] ->
             gen_server:cast(Handler, {msg, Data}),
             true;
         _ ->
