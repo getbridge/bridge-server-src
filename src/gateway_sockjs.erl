@@ -48,9 +48,9 @@ handle_sockjs(Conn, {recv, Data}) ->
 
 %% --------------------------------------------------------------------------
 send(#gateway_connection{impl=Conn}, Data) ->
-  sockjs:send(Conn, Data).
+  sockjs:send(Data, Conn).
 
 close(#gateway_connection{impl=Conn}) ->
-  sockjs:close(Conn, 666, "Connection closed").
+  sockjs:close(666, "Connection closed", Conn).
 
 %% --------------------------------------------------------------------------
