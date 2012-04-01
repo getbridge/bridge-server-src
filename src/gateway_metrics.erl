@@ -38,7 +38,7 @@ handle_call(_Msg, _From, State) ->
   {reply, unknown_command, State}.
 
 handle_cast({send_app_usage, PrivKey, Usage}, State = #state{redirector_url = Redirector}) ->
-  Report = sockjs_json:encode({[{priv_key, PrivKey}, {usage, Usage}]}),
+  Report = gateway_util:encode({[{priv_key, PrivKey}, {usage, Usage}]}),
   httpc:request(post, {Redirector ++ "meter/", [], "application/json", Report}, [], [
       {sync, false},
       {body_format, binary}, 
@@ -60,7 +60,7 @@ handle_cast(_Msg, State) ->
   {noreply, State}.
 
 handle_info(send_server_usage, State = #state{bridgeid = BridgeId, redirector_url = Redirector, server_usage = Usage}) ->
-  Report = sockjs_json:encode({[{bridgeId, BridgeId}, {usage, Usage}]}),
+  Report = gateway_util:encode({[{bridgeId, BridgeId}, {usage, Usage}]}),
   httpc:request(post, {Redirector ++ "serverMeter/", [], "application/json", Report}, [], [
       {sync, false},
       {body_format, binary}, 
@@ -91,7 +91,7 @@ code_change(_OldVsn, State, _Extra) ->
   
 report_add_server(Hostname, TCPPort, WebPort) ->
   {ok, Redirector} = application:get_env(gateway, redirector_url),
-  Report = sockjs_json:encode({[{host, Hostname}, {tcp_port, TCPPort}, {web_port, WebPort}]}),
+  Report = gateway_util:encode({[{host, Hostname}, {tcp_port, TCPPort}, {web_port, WebPort}]}),
   httpc:request(post, {Redirector ++ "addServer/", [], "application/json", Report}, [], [
       {sync, false},
       {body_format, binary}, 
@@ -99,7 +99,7 @@ report_add_server(Hostname, TCPPort, WebPort) ->
             case Val of
               {_, {error, Reason}} ->
                 gateway_util:error("Error #206 : in add server to redirector: ~p~n", [Reason]);
-              {_, {{_, 200, _}, _, RawData}} -> {ok, JSONDecoded} = sockjs_json:decode(RawData),
+              {_, {{_, 200, _}, _, RawData}} -> {ok, JSONDecoded} = gateway_util:decode(RawData),
                                                 {PropList} = JSONDecoded,
                                                 {DataList} = proplists:get_value(<<"data">>, PropList),
                                                 AppList = proplists:get_value(<<"applications">>, DataList),

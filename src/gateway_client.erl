@@ -196,7 +196,7 @@ handle_connect(DataList, State = #state{outbound_connection = OutboundConnection
 
 handle_cast({msg, RawData}, State) ->
   try
-    {ok, JSONDecoded} = sockjs_json:decode(RawData),
+    {ok, JSONDecoded} = gateway_util:decode(RawData),
     {PropList} = JSONDecoded,
     Command = proplists:get_value(<<"command">>, PropList),
     Data = proplists:get_value(<<"data">>, PropList),
@@ -251,7 +251,7 @@ handle_cast({error, ErrorId, Message}, State = #state{sessionid = SessionId}) ->
   DestinationPath = [ <<"client">>, BinSessionId, <<"system">>, <<"remoteError">> ],
   Destination = gateway_util:binpathchain_to_nowref(DestinationPath),
 
-  Payload = sockjs_json:encode({[
+  Payload = gateway_util:encode({[
               {<<"destination">>, Destination },
               {<<"args">>, [list_to_binary(ErrorMessage)] }
             ]}),

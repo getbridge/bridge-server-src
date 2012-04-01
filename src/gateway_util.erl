@@ -2,7 +2,7 @@
 
 -module(gateway_util).
 
--export([info/1, warn/1, error/1, info/2, warn/2, error/2, gen_id/0, now_decode/1, now_decode_helper/2,
+-export([info/1, warn/1, error/1, info/2, warn/2, error/2, gen_id/0, now_decode/1, now_decode_helper/2, encode/1, decode/1,
          extract_pathchain_from_nowref/1, string_join/2, extract_pathstring_from_nowref/1,
          extract_binpathchain_from_nowref/1, binpathchain_to_nowref/1, current_time/0, validate_name/1, md5_hex/1, timestamp/0, display_log/1, basic_return_error/2]).
 
@@ -126,3 +126,9 @@ basic_return_error(Key, _Exchange) ->
     <<"channel">> -> {228, <<"Could not deliver message ", Destination/binary, " to unavailable channel: ", Id/binary>>};
     _ -> {304, Key}
   end.
+
+encode(Val) ->
+  jiffy:encode(Val).
+  
+decode(Val) ->
+  jiffy:decode(Val).
