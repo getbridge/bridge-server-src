@@ -15,12 +15,12 @@ init()->
   
   application:start(cowboy),
        
-      GatewaySockJs = sockjs_handler:init_state(<<"/echo">>, fun gateway_sockjs:handle_sockjs/2, []),
+      GatewaySockJs = sockjs_handler:init_state(<<"/bridge">>, fun gateway_sockjs:handle_sockjs/2, []),
 
        
        Dispatch = [{'_', % domain specifier
                     [{
-                      [<<"echo">>, '...'], 
+                      [<<"bridge">>, '...'], 
                       sockjs_cowboy_handler, 
                       GatewaySockJs
                     }]
