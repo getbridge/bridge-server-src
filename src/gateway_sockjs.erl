@@ -5,60 +5,46 @@
 -behavior(gateway_callbacks).
 
 % For sockjs input
--export([dispatcher/0, mqb_handle/1, mqb_handle/2]).
+-export([handle_sockjs/2]).
 
 % For gateway_callbacks behavior
 -export([send/2, close/1]).
--export([get_sockId/1]).
 
 
 dispatcher() ->
-    [{bridge, fun mqb_handle/2}].
+    [{bridge, fun handle_sockjs/2}].
 
-% Initialize Table
-mqb_handle(start) ->
-    ets:new(broadcast_table, [public, named_table]),
-    ets:new(secret, [public, named_table]),
-    ets:new(rabbithandlers, [public, named_table]),
-    gateway_util:info("Initializing~n"),
-    ok.
 
 % Create SessionId, and register Connection with SessionId
-mqb_handle(Conn, init) ->
-    SockId = get_sockId(Conn),
-    
+handle_sockjs(Conn, init) ->
     {ok, Handler} = gateway_client_sup:start_child(),
     OutConn = #gateway_connection{client = Handler, impl = Conn, callback_module = ?MODULE},
-    true = ets:insert(broadcast_table, {SockId, OutConn} ),
+    true = ets:insert(sockjs_handler_table, {Conn, OutConn} ),
     gen_server:call(Handler, {ready, OutConn} ),
-    gateway_util:info("Registered ~p with ~p~n", [SockId, {Conn, Handler}]),
     ok;
 
 % Look up SockId, Shutdown Handler, Delete SockId
-mqb_handle(Conn, closed) ->
-    SockId = get_sockId(Conn),
-    LookUp = ets:lookup(broadcast_table, SockId),
+handle_sockjs(Conn, closed) ->
+    LookUp = ets:lookup(sockjs_handler_table, Conn),
     case LookUp of
-      [{SockId, #gateway_connection{client = Handler}}] ->
-            true = ets:delete(broadcast_table, SockId),
+      [{Conn, #gateway_connection{client = Handler}}] ->
+            true = ets:delete(sockjs_handler_table, Conn),
             gen_server:cast(Handler, stop),
-            gateway_util:info("~s: Connection closed~n", [SockId]),
             true;
         _ ->
-            gateway_util:error("Error #201: Failed to find sockjs connection for ~p ~p~n", [SockId, LookUp]),
+            gateway_util:error("Error #201: Failed to find sockjs connection~n"),
             false
     end,
     ok;
 
-mqb_handle(Conn, {recv, Data}) ->
-    SockId = get_sockId(Conn),
-    LookUp = ets:lookup(broadcast_table, SockId),
+handle_sockjs(Conn, {recv, Data}) ->
+    LookUp = ets:lookup(sockjs_handler_table, Conn),
     case LookUp of
         [{SockId, #gateway_connection{client = Handler}}] ->
             gen_server:cast(Handler, {msg, Data}),
             true;
         _ ->
-            gateway_util:error("Error #202: Failed to find sockjs connection for ~p ~p~n", [SockId, LookUp]),
+            gateway_util:error("Error #202: Failed to find sockjs connection~n"),
             false
     end,
     ok.
@@ -66,22 +52,9 @@ mqb_handle(Conn, {recv, Data}) ->
 
 %% --------------------------------------------------------------------------
 send(#gateway_connection{impl=Conn}, Data) ->
-  SockId = get_sockId(Conn),
-  LookUp = ets:lookup(broadcast_table, SockId),
-  case LookUp of
-      [{SockId, #gateway_connection{impl=Conn}}] ->
-          Conn:send(Data);
-      _ ->
-          gateway_util:error("Error #203: Failed to find sockjs connection for ~p ~p~n", [SockId, LookUp]),
-          false
-  end.
+  sockjs:send(Conn, Data).
 
 close(#gateway_connection{impl=Conn}) ->
-  Conn:close(666, "Connection closed").
+  sockjs:close(Conn, 666, "Connection closed").
 
 %% --------------------------------------------------------------------------
-get_sockId(Conn) ->
-    case Conn of
-        {_,_,_,SockId} -> SockId;
-        {_,SockId} -> SockId
-    end.

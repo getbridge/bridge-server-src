@@ -14,11 +14,15 @@ init()->
   {ok, CtlPort} = application:get_env(gateway, ctl_port),
   
   application:start(cowboy),
+       
+      GatewaySockJs = sockjs_handler:init_state(<<"/echo">>, fun gateway_sockjs:handle_sockjs/2, []),
+
+       
        Dispatch = [{'_', % domain specifier
                     [{
-                      '_', % path specifier
-                      sockjs_cowboy_handler, % handler module name. This is the sockjs one
-                      {fun handle/1, fun ws_handle/1} % handler functions. gets passed to sockjs_cowboy_handler
+                      [<<"echo">>, '...'], 
+                      sockjs_cowboy_handler, 
+                      GatewaySockJs
                     }]
                   }],
        cowboy:start_listener(http, 100,
@@ -45,27 +49,4 @@ init()->
      _ -> ok
   end.
 
-% --------------------------------------------------------------------------
-
-handle(Req) ->
-    gateway_util:info("Reached handler~n"),
-    {Path0, Req1} = sockjs_http:path(Req),
-    Path = clean_path(Path0),
-    case sockjs_filters:handle_req(Req1, Path, gateway_sockjs:dispatcher()) of
-        nomatch -> ok;
-        Req2    -> Req2
-    end.
-
-ws_handle(Req) ->
-    gateway_util:info("Reached WS handler~n"),
-    {Path0, Req1} = sockjs_http:path(Req),
-    Path = clean_path(Path0),
-    {Receive, _, SessionId, _} = sockjs_filters:dispatch('GET', Path,
-                                                 gateway_sockjs:dispatcher()),
-    {Receive, Req1, SessionId}.
-
-clean_path("/")         -> "index.html";
-clean_path("/" ++ Path) -> Path.
-
-%% --------------------------------------------------------------------------
 
