@@ -15,7 +15,7 @@ init()->
   
   application:start(cowboy),
        
-      GatewaySockJs = sockjs_handler:init_state(<<"/bridge">>, fun gateway_sockjs:handle_sockjs/2, [{logger, fun(_,_) -> ok end}]),
+      GatewaySockJs = sockjs_handler:init_state(<<"/bridge">>, fun gateway_sockjs:handle_sockjs/2, [{logger, fun(_,Req,_) -> Req end}]),
 
        
        Dispatch = [{'_', % domain specifier
