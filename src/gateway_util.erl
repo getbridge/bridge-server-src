@@ -130,5 +130,11 @@ basic_return_error(Key, _Exchange) ->
 encode(Val) ->
   jiffy:encode(Val).
   
-decode(Val) ->
-  jiffy:decode(Val).
+decode(JSON) when is_binary(JSON) ->
+  try jiffy:decode(JSON) of
+    V -> {ok, V}
+  catch
+    E -> E
+  end;
+decode(JSON) ->
+  decode(iolist_to_binary(JSON)).
