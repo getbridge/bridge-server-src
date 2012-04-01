@@ -44,7 +44,6 @@ init()->
   io:format("~nRunning on web port ~p and tcp port ~p~n", [WebPort, TCPPort]),
   io:format("~nRunning control server on port ~p~n~n", [CtlPort]),
 
-  gateway_sockjs:mqb_handle(start),
   receive
      _ -> ok
   end.
