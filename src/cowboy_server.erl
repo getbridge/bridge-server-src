@@ -14,11 +14,15 @@ init()->
   {ok, CtlPort} = application:get_env(gateway, ctl_port),
   
   application:start(cowboy),
+       
+      GatewaySockJs = sockjs_handler:init_state(<<"/bridge">>, fun gateway_sockjs:handle_sockjs/2, [{logger, fun(_,Req,_) -> Req end}]),
+
+       
        Dispatch = [{'_', % domain specifier
                     [{
-                      '_', % path specifier
-                      sockjs_cowboy_handler, % handler module name. This is the sockjs one
-                      {fun handle/1, fun ws_handle/1} % handler functions. gets passed to sockjs_cowboy_handler
+                      [<<"bridge">>, '...'], 
+                      sockjs_cowboy_handler, 
+                      GatewaySockJs
                     }]
                   }],
        cowboy:start_listener(http, 100,
@@ -40,32 +44,8 @@ init()->
   io:format("~nRunning on web port ~p and tcp port ~p~n", [WebPort, TCPPort]),
   io:format("~nRunning control server on port ~p~n~n", [CtlPort]),
 
-  gateway_sockjs:mqb_handle(start),
   receive
      _ -> ok
   end.
 
-% --------------------------------------------------------------------------
-
-handle(Req) ->
-    gateway_util:info("Reached handler~n"),
-    {Path0, Req1} = sockjs_http:path(Req),
-    Path = clean_path(Path0),
-    case sockjs_filters:handle_req(Req1, Path, gateway_sockjs:dispatcher()) of
-        nomatch -> ok;
-        Req2    -> Req2
-    end.
-
-ws_handle(Req) ->
-    gateway_util:info("Reached WS handler~n"),
-    {Path0, Req1} = sockjs_http:path(Req),
-    Path = clean_path(Path0),
-    {Receive, _, SessionId, _} = sockjs_filters:dispatch('GET', Path,
-                                                 gateway_sockjs:dispatcher()),
-    {Receive, Req1, SessionId}.
-
-clean_path("/")         -> "index.html";
-clean_path("/" ++ Path) -> Path.
-
-%% --------------------------------------------------------------------------
 

@@ -137,7 +137,7 @@ handle_cast({publish_message, SessionId, Message}, State = #state{channel = Chan
                                           routing_key = <<ApiKey/binary, ".", RoutingKey/binary>>,
                                           immediate = true
                                         },
-          Payload = sockjs_util:encode( {Message} ),
+          Payload = gateway_util:encode( {Message} ),
           Content = #amqp_msg{payload = Payload},
 
           amqp_channel:call(Channel, BasicPublish, Content),
@@ -200,7 +200,7 @@ handle_info({#'basic.deliver'{delivery_tag = Tag}, Content},
   amqp_channel:cast(Channel, #'basic.ack'{delivery_tag = Tag}),
   #amqp_msg{payload = Payload} = Content,
   try
-    {ok, Message} = sockjs_util:decode(Payload),
+    {ok, Message} = gateway_util:decode(Payload),
     {DataList} = Message,
     case proplists:is_defined(<<"args">>, DataList) of
       false ->  %% Rabbit handler system call

@@ -23,6 +23,10 @@ start(_Type, _Args) ->
             _  -> gateway_util:display_log(true)
   end,
   
+  ets:new(secret, [public, named_table]),
+  ets:new(rabbithandlers, [public, named_table]),
+  ets:new(sockjs_handler_table, [public, named_table]),
+
   gateway_util:info("Starting Bridge Gateway!~n"),
   gateway_app_sup:start_link().
 

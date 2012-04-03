@@ -21,7 +21,7 @@ handle(Req, State) ->
   end.
 
 req_handler(State, Body, Req2) ->
-  {ok, JSONDecoded} = sockjs_util:decode(Body),
+  {ok, JSONDecoded} = gateway_util:decode(Body),
   {Json} = JSONDecoded,
   PrivKey = proplists:get_value(<<"priv_key">>, Json),
   true = valid_key(PrivKey),
