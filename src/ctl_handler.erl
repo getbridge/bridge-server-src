@@ -91,7 +91,11 @@ update_metering(PrivKey) ->
         end;
       
       Usage < Limit ->
-        Result = (Usage + 1) rem Limit,
+        Result = case Delta < ?RESET_INTERVAL of
+                   true -> (Usage + 1) rem Limit;
+                   false -> 1
+                 end,
+        
         case (Usage + 1) rem ?UPDATE_GRANULARITY of
           0 -> gen_server:cast(gateway_metrics, {server_usage_update, ?UPDATE_GRANULARITY});
           _ -> ok
@@ -102,13 +106,10 @@ update_metering(PrivKey) ->
             ok;
 
           true ->
-            % There's just been a reset.
-            ExpiredStatus = Delta < ?RESET_INTERVAL,
             gen_server:cast(gateway_metrics, {send_app_usage, PrivKey, Limit}),
-            ets:update_element(meter_table, PrivKey, {2, {ExpiredStatus, Now, 0, Limit, PubKey}}),
+            ets:update_element(meter_table, PrivKey, {2, {true, Now, 0, Limit, PubKey}}),
             ok
         end;
-
       true ->
         {timeout, other}
     end
