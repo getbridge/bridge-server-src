@@ -2,7 +2,7 @@
 
 -module(ctl_handler).
 -behaviour(cowboy_http_handler).
--export([init/3, handle/2, terminate/2, update_metering/1, lookup_priv/1, add_key/2]).
+-export([init/3, handle/2, terminate/2, update_metering/1, lookup_priv/1, add_key/3]).
 
 -include("metering.hrl").
 
