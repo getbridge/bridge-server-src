@@ -32,7 +32,7 @@ req_handler(State, Body, Req2) ->
     <<"addKey">> ->
       case valid_key(PubKey) of
         true ->
-          add_key(PrivKey, PubKey);
+          add_key(PrivKey, PubKey, NewLimit);
         _ ->
           error
       end;
@@ -52,9 +52,9 @@ req_handler(State, Body, Req2) ->
 valid_key(BinApiKey) ->
   is_binary(BinApiKey) andalso bit_size(BinApiKey) / 8 == 8.
 
-add_key(PrivKey, PubKey) ->
+add_key(PrivKey, PubKey, Limit) ->
   % meter_table[api_key] -> {is_expired, when_expired, #calls, limit, public_api_key}
-  ets:insert(meter_table, {PrivKey, {false, gateway_util:current_time(), 0, ?MAXCALLS, PubKey}}),
+  ets:insert(meter_table, {PrivKey, {false, gateway_util:current_time(), 0, Limit, PubKey}}),
   ets:insert(meter_table_public, {PubKey, PrivKey}),
   ok.
 
@@ -65,8 +65,8 @@ delete_key(PrivKey) ->
   ok.
 
 set_limit(PrivKey, NewLimit) ->
-  {IsExpired, WhenExpired, Usage, _, PubKey} = ets:lookup_element(meter_table, PrivKey, 2),
-  ets:update_element(meter_table, PrivKey, {2, {IsExpired, WhenExpired, Usage, NewLimit, PubKey}}),
+  {IsExpired, WhenExpired, _Usage, _, PubKey} = ets:lookup_element(meter_table, PrivKey, 2),
+  ets:update_element(meter_table, PrivKey, {2, {IsExpired, WhenExpired, 1, NewLimit, PubKey}}),
   ok.
 
 terminate(_Req, _State) ->

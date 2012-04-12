@@ -103,8 +103,8 @@ report_add_server(Hostname, TCPPort, WebPort) ->
                                                 {PropList} = JSONDecoded,
                                                 {DataList} = proplists:get_value(<<"data">>, PropList),
                                                 AppList = proplists:get_value(<<"applications">>, DataList),
-                                                lists:map(fun ([PubKey, PrivKey]) ->
-                                                            ctl_handler:add_key(PrivKey, PubKey)
+                                                lists:map(fun ([PubKey, PrivKey, Limit]) ->
+                                                            ctl_handler:add_key(PrivKey, PubKey, Limit)
                                                           end, AppList);
               {_, _} -> gateway_util:error("Error #206 : in add server to redirector")
             end
