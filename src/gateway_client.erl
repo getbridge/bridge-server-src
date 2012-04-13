@@ -260,7 +260,6 @@ handle_cast({error, ErrorId, Message}, State = #state{sessionid = SessionId}) ->
   {noreply, State};
 
 handle_cast(stop, State) ->
-  gateway_util:info("Stop Cast: Stopping.~n"),
   {stop, normal, State};
 handle_cast(_Msg, State) ->
   gateway_util:warn("Error #223 : Unknown Command: ~p~n", [_Msg]),

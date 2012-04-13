@@ -155,7 +155,6 @@ handle_cast({publish_message, SessionId, Message}, State = #state{channel = Chan
   end;
 
 handle_cast(stop, State) ->
-  gateway_util:info("Stop Cast: Stopping.~n"),
   {stop, normal, State};
 
 
@@ -244,7 +243,6 @@ bind_refs(Link, #state{channel = Channel, sessionid = SessionId, api_key = ApiKe
   end.
 
 terminate(_, #state{channel = Channel, subscriptions = Subscriptions, exchanges = Exchanges, queues = Queues}) ->
-  gateway_util:info("Closing AMQP Channel ~p ~p ~p ~p~n", [Channel, Subscriptions, Exchanges, Queues]),
   lists:map( fun(ExchangeName) -> amqp_channel:call(Channel, #'exchange.delete'{exchange = ExchangeName}) end, Exchanges ),
   lists:map( fun(QueueName) -> amqp_channel:call(Channel, #'queue.delete'{queue = QueueName}) end, Queues ),
   amqp_channel:close(Channel),

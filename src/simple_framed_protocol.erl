@@ -33,7 +33,6 @@ init(ListenerPid, Socket, Transport, _Opts) ->
 
 
 connection_died(Connection) ->
-  gateway_util:warn("Connection Died!~n"),
   Pid = Connection#gateway_connection.client,
   gen_server:cast(Pid, stop),
   close(Connection).
@@ -49,7 +48,6 @@ collect(State = #state{
       gen_server:cast(Pid, {msg, Data}),
       collect(State);
     {error, _Reason} ->
-      gateway_util:info("Died for reason: ~w~n", [_Reason]),
       connection_died(OutConn),
       ok
   end.
@@ -64,5 +62,4 @@ send(OutConn = #gateway_connection{impl = {Transport, Sock}}, Data) ->
   end.
 
 close(#gateway_connection{impl = {Transport, Sock}}) ->
-  gateway_util:info("Closing TCP Socket ~n"),
   Transport:close(Sock).
