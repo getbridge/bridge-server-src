@@ -240,9 +240,7 @@ bind_refs(Link, #state{channel = Channel, sessionid = SessionId, api_key = ApiKe
                _ -> ok
   end.
 
-terminate(_, #state{channel = Channel, subscriptions = Subscriptions, exchanges = Exchanges, queues = Queues}) ->
-  lists:map( fun(ExchangeName) -> amqp_channel:call(Channel, #'exchange.delete'{exchange = ExchangeName}) end, Exchanges ),
-  lists:map( fun(QueueName) -> amqp_channel:call(Channel, #'queue.delete'{queue = QueueName}) end, Queues ),
+terminate(_, #state{channel = Channel}) ->
   amqp_channel:close(Channel),
   ok.
 
