@@ -51,7 +51,7 @@ handle_call({ready, Protocol, SessionId, ApiKey}, _From,
 
   amqp_channel:register_return_handler(Channel, self()),
 
-  Sub = #'basic.consume'{queue = QueueName},
+  Sub = #'basic.consume'{queue = QueueName, no_ack = True},
   #'basic.consume_ok'{} = amqp_channel:subscribe(Channel, Sub, self()),
 
   {reply, ok,
@@ -80,7 +80,7 @@ handle_cast({join_workerpool, Name}, State = #state{channel = Channel, subscript
                                routing_key = list_to_binary([ApiKey, <<".named.">>, Name, <<".#">>])},
   #'queue.bind_ok'{} = amqp_channel:call(Channel, QueueBinding),
 
-  Sub = #'basic.consume'{queue = QueueName},
+  Sub = #'basic.consume'{queue = QueueName, no_ack = True},
   #'basic.consume_ok'{consumer_tag = Tag} = amqp_channel:subscribe(Channel, Sub, self()),
   {noreply, State#state{subscriptions=[{QueueName, Tag}|Subscriptions]}};
 handle_cast({join_channel, Name, HandlerSessionId}, State = #state{channel = Channel, api_key = ApiKey}) ->
@@ -167,7 +167,7 @@ handle_cast(pause_subs, State = #state{channel = Channel, subscriptions = Subscr
 %% Resume listening on service bindings
 handle_cast(resume_subs, State = #state{channel = Channel, subscriptions = Subscriptions}) ->
   Subs = lists:map(fun({QueueName, _Tag}) ->
-              Sub = #'basic.consume'{queue = QueueName},
+              Sub = #'basic.consume'{queue = QueueName, no_ack = True},
               #'basic.consume_ok'{consumer_tag = NewTag} = amqp_channel:subscribe(Channel, Sub, self()),
               {QueueName, NewTag}
             end, Subscriptions ),
@@ -194,7 +194,6 @@ handle_info({#'basic.return'{exchange = Exchange, routing_key = Key}, _Content},
 handle_info({#'basic.deliver'{delivery_tag = Tag}, Content},
             State = #state{channel = Channel, protocol = Protocol}
            ) ->
-  amqp_channel:cast(Channel, #'basic.ack'{delivery_tag = Tag}),
   #amqp_msg{payload = Payload} = Content,
   try
     {ok, Message} = gateway_util:decode(Payload),
