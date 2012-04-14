@@ -54,8 +54,6 @@ handle_call({ready, Protocol, SessionId, ApiKey}, _From,
   Sub = #'basic.consume'{queue = QueueName},
   #'basic.consume_ok'{} = amqp_channel:subscribe(Channel, Sub, self()),
 
-  gateway_util:info("Core exchanges/queues declared for ~s~n", [SessionId]),
-
   {reply, ok,
     State#state{
       protocol=Protocol,
