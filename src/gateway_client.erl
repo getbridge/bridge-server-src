@@ -145,12 +145,9 @@ handle_send(Data, State = #state{sessionid = SessionId, rabbit_handler = RabbitH
   Pathchain = proplists:get_value(<<"ref">>, DataList),
   
   %% Erlang does not allow expression as guards, so store these booleans
-  ChannelCall = (Privilege == unpriv) and (lists:nth(1, Pathchain) == <<"channel">>),
   SystemCall = lists:nth(3, Pathchain) == <<"system">>,
   
   if
-    ChannelCall ->
-      gen_server:cast(self(), {error, 110, "Channel call permission denied"});
     SystemCall ->
       gen_server:cast(self(), {error, 111, "System service calls are not allowed"});
     true ->
