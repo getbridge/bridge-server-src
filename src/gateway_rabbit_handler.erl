@@ -70,7 +70,6 @@ handle_call(_Msg, _From, State) ->
 
 handle_cast({change_protocol, Protocol}, State) ->
   {noreply, State#state{protocol=Protocol}};
-
 handle_cast({join_workerpool, Name}, State = #state{channel = Channel, subscriptions=Subscriptions, api_key = ApiKey}) ->
   QueueName = list_to_binary([<<"W_">>, Name, <<"_">>, ApiKey]),
   QueueDeclare = #'queue.declare'{queue = QueueName},
@@ -83,6 +82,15 @@ handle_cast({join_workerpool, Name}, State = #state{channel = Channel, subscript
   Sub = #'basic.consume'{queue = QueueName, no_ack = true},
   #'basic.consume_ok'{consumer_tag = Tag} = amqp_channel:subscribe(Channel, Sub, self()),
   {noreply, State#state{subscriptions=[{QueueName, Tag}|Subscriptions]}};
+handle_cast({leave_workerpool, Name}, State = #state{channel = Channel, subscriptions=Subscriptions, api_key = ApiKey, protocol = Protocol}) ->
+  QueueName = list_to_binary([<<"W_">>, Name, <<"_">>, ApiKey]),
+  NewSubs = case lists:keytake(QueueName, 1, Subscriptions) of
+    {value, {QueueName, Tag}, NewList} -> amqp_channel:call(Channel, #'basic.cancel'{consumer_tag = Tag}),
+                                          NewList;
+                                 false -> gen_server:cast(Protocol, {error, 115, ["Cannot unpublish service that was not published", Name]}),
+                                          Subscriptions
+  end,
+  {noreply, State#state{subscriptions=NewSubs}};
 handle_cast({join_channel, Name, HandlerSessionId}, State = #state{channel = Channel, api_key = ApiKey}) ->
   ChannelExchange = list_to_binary([<<"F_">>, Name, <<"_">>, ApiKey]),
   ExchangeDeclare = #'exchange.declare'{exchange = ChannelExchange,
@@ -158,9 +166,8 @@ handle_cast(stop, State) ->
 
 %% Pause listening on service bindings
 handle_cast(pause_subs, State = #state{channel = Channel, subscriptions = Subscriptions}) ->
-  lists:map( fun(Sub = {_QueueName, Tag}) ->
-                amqp_channel:call(Channel, #'basic.cancel'{consumer_tag = Tag}),
-                Sub
+  lists:foreach( fun({_QueueName, Tag}) ->
+                amqp_channel:call(Channel, #'basic.cancel'{consumer_tag = Tag})
               end, Subscriptions ),
   {noreply, State};
 
@@ -191,9 +198,8 @@ handle_info({#'basic.return'{exchange = Exchange, routing_key = Key}, _Content},
   gen_server:cast(Protocol, {error, ErrorCode, ErrorMsg}),
   {noreply, State};
 
-handle_info({#'basic.deliver'{delivery_tag = Tag}, Content},
-            State = #state{channel = Channel, protocol = Protocol}
-           ) ->
+handle_info({#'basic.deliver'{}, Content},
+            State = #state{protocol = Protocol}) ->
   #amqp_msg{payload = Payload} = Content,
   try
     {ok, Message} = gateway_util:decode(Payload),

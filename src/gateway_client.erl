@@ -46,6 +46,31 @@ handle_join_worker_pool(DataList, State = #state{rabbit_handler = RabbitHandler
   end,
   State.
 
+handle_leave_worker_pool(_, State = #state{privilege = unpriv}) ->
+  gen_server:cast(self(), {error, 113, "Unpublish service permissions denied"}),
+  State;
+handle_leave_worker_pool(DataList, State = #state{rabbit_handler = RabbitHandler
+                                                 , sessionid = SessionId
+                                                 , privilege = priv}) ->
+  Callback = proplists:get_value(<<"callback">>, DataList),
+  Name = proplists:get_value(<<"name">>, DataList),
+
+  case gateway_util:validate_name(Name) of
+    true -> gen_server:cast(RabbitHandler, {leave_workerpool, Name}),
+            case Callback of
+              undefined -> State;
+              _ -> ServicePathChain = gateway_util:extract_binpathchain_from_nowref(Callback),
+                   MethodPathChain  = lists:append(ServicePathChain, [<<"callback">>]),
+                   Message =   [
+                     {<<"destination">>, gateway_util:binpathchain_to_nowref(MethodPathChain) },
+                     {<<"args">>, [Name] }
+                   ],
+                   gen_server:cast(RabbitHandler, {publish_message, SessionId, Message})
+            end;
+    false -> gen_server:cast(self(), {error, 114, <<"Invalid service name: ", Name/binary>>})
+  end,
+  State.
+  
 handle_getops(DataList, State = #state{rabbit_handler = RabbitHandler, sessionid = SessionId}) ->
   Callback = proplists:get_value(<<"callback">>, DataList),
   Name = proplists:get_value(<<"name">>, DataList),
@@ -140,7 +165,7 @@ handle_leave_channel(DataList, State = #state{rabbit_handler = RabbitHandler
   end,
   State.
 
-handle_send(Data, State = #state{sessionid = SessionId, rabbit_handler = RabbitHandler, privilege = Privilege}) ->
+handle_send(Data, State = #state{sessionid = SessionId, rabbit_handler = RabbitHandler}) ->
   {DataList} = proplists:get_value(<<"destination">>,Data),
   Pathchain = proplists:get_value(<<"ref">>, DataList),
   
@@ -203,6 +228,8 @@ handle_cast({msg, RawData}, State) ->
         handle_send(DataList, State);
       <<"JOINWORKERPOOL">> ->
         handle_join_worker_pool(DataList, State);
+      <<"LEAVEWORKERPOOL">> ->
+        handle_leave_worker_pool(DataList, State);
       <<"JOINCHANNEL">> ->
         handle_join_channel(DataList, State);
       <<"GETCHANNEL">> ->
