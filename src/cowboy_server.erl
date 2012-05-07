@@ -12,6 +12,18 @@ init()->
   {ok, WebPort} = application:get_env(gateway, web_port),
   {ok, TCPPort} = application:get_env(gateway, tcp_port),
   {ok, CtlPort} = application:get_env(gateway, ctl_port),
+  Cert = case application:get_env(gateway, certfile) of
+          undefined ->
+            "flotype.crt";
+          {ok, Cert0} ->
+            Cert0
+         end,
+   Key = case application:get_env(gateway, keyfile) of
+    undefined ->
+      "flotype.key";
+    {ok, Key0} ->
+      Key0
+   end,
   
   application:start(cowboy),
        
@@ -25,10 +37,13 @@ init()->
                       GatewaySockJs
                     }]
                   }],
-       cowboy:start_listener(http, 100,
+       cowboy:start_listener(http, 4,
                              cowboy_tcp_transport, [{port,     WebPort}, {max_connections, 100000}],
                              cowboy_http_protocol, [{dispatch, Dispatch}]),
-       cowboy:start_listener(tcp, 100,
+       cowboy:start_listener(ssl, 4,
+         cowboy_ssl_transport, [{port,8093}, {certfile, Cert}, {keyfile, Key}, {password, "5K2**iZr"}],
+                             simple_framed_protocol, [{handler, none}]),
+       cowboy:start_listener(tcp, 4,
                              cowboy_tcp_transport, [{port, TCPPort }, {max_connections, 100000}],
                              simple_framed_protocol, [{handler, none}]),
 
