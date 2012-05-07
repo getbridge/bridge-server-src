@@ -22,7 +22,7 @@ start_link(ListenerPid, Socket, Transport, Opts) ->
 
 init(ListenerPid, Socket, Transport, _Opts) ->
   ok = cowboy:accept_ack(ListenerPid),
-  inet:setopts(Socket, [{packet, 4}, {nodelay, true}]),
+  Transport:setopts(Socket, [{packet, 4}, {nodelay, true}]),
   {ok, Pid} = gateway_client_sup:start_child(),
   OutConn = #gateway_connection{client = Pid, impl = {Transport, Socket},
 				callback_module = ?MODULE},
