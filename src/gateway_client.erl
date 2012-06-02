@@ -176,7 +176,8 @@ handle_send(Data, State = #state{sessionid = SessionId, rabbit_handler = RabbitH
     SystemCall ->
       gen_server:cast(self(), {error, 111, "System service calls are not allowed"});
     true ->
-      gen_server:cast(RabbitHandler, {publish_message, SessionId, Data})
+      Src = {<<"source">>, SessionId},
+      gen_server:cast(RabbitHandler, {publish_message, SessionId, [Src|Data]})
   end,
   State.
 
