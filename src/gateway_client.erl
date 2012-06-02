@@ -54,7 +54,7 @@ handle_leave_worker_pool(DataList, State = #state{rabbit_handler = RabbitHandler
                                                  , privilege = priv}) ->
   Callback = proplists:get_value(<<"callback">>, DataList),
   Name = proplists:get_value(<<"name">>, DataList),
-
+  
   case gateway_util:validate_name(Name) of
     true -> gen_server:cast(RabbitHandler, {leave_workerpool, Name}),
             case Callback of
@@ -74,7 +74,11 @@ handle_leave_worker_pool(DataList, State = #state{rabbit_handler = RabbitHandler
 handle_getops(DataList, State = #state{rabbit_handler = RabbitHandler, sessionid = SessionId}) ->
   Callback = proplists:get_value(<<"callback">>, DataList),
   Name = proplists:get_value(<<"name">>, DataList),
-  DestPath = [ <<"named">>, Name, <<"system">>, <<"getService">> ],
+  Client = proplists:get_value(<<"client">>, DataList),
+  DestPath = case Client of
+    undefined -> [ <<"named">>, Name, <<"system">>, <<"getService">> ];
+            _ -> [ <<"client">>, Client, <<"system">>, <<"getService">> ];
+  end,
   DestRef = gateway_util:binpathchain_to_nowref(DestPath),
   Message =   [
                 {<<"destination">>,  DestRef},
