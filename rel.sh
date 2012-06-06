@@ -1,8 +1,9 @@
-#!/bin/bash   
+#!/bin/bash
+rm -f "rel/bc-latest"
 rm -rf rel/bc
 set -e
 ./rebar generate
-sed 's/__VERSION__/${VER}/g' bridge_wrapper > rel/bc/bin/bridge
+sed 's/__VERSION__/${VER}/g' $PWD/bridge-wrapper > rel/bc/bin/bridge
 chmod u+x rel/bc/bin/bridge
 cd rel/bc/lib/
 echo -n "Unpacking .ez files"

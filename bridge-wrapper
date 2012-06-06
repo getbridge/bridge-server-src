@@ -11,4 +11,4 @@ fi
 
 # Start server.
 echo "Starting the Bridge gateway..."
-. run start
+. bc-latest/bin/run start
