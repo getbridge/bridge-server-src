@@ -11,6 +11,8 @@ start_link() ->
 init()->
   {ok, WebPort} = application:get_env(gateway, web_port),
   {ok, TCPPort} = application:get_env(gateway, tcp_port),
+  {ok, SSLPort} = application:get_env(gateway, ssl_port),
+  {ok, HTTPSPort} = application:get_env(gateway, https_port),
   {ok, CtlPort} = application:get_env(gateway, ctl_port),
   Cert = case application:get_env(gateway, certfile) of
           undefined ->
@@ -40,8 +42,11 @@ init()->
        cowboy:start_listener(http, 4,
                              cowboy_tcp_transport, [{port,     WebPort}, {max_connections, 100000}],
                              cowboy_http_protocol, [{dispatch, Dispatch}]),
+       cowboy:start_listener(https, 4,
+                             cowboy_ssl_transport, [{port,     HTTPSPort}, {max_connections, 100000}],
+                             cowboy_http_protocol, [{dispatch, Dispatch}]),
        cowboy:start_listener(ssl, 4,
-         cowboy_ssl_transport, [{port,8093}, {certfile, Cert}, {keyfile, Key}, {password, "5K2**iZr"}],
+                             cowboy_ssl_transport, [{port, SSLPort}, {certfile, Cert}, {keyfile, Key}, {password, "5K2**iZr"}],
                              simple_framed_protocol, [{handler, none}]),
        cowboy:start_listener(tcp, 4,
                              cowboy_tcp_transport, [{port, TCPPort }, {max_connections, 100000}],
