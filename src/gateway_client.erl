@@ -90,6 +90,7 @@ handle_join_channel(DataList, State = #state{rabbit_handler = RabbitHandler, pri
   Callback = proplists:get_value(<<"callback">>, DataList),
   Handler = proplists:get_value(<<"handler">>, DataList),
   Name = proplists:get_value(<<"name">>, DataList),
+  Writeable = proplists:get_value(<<"writeable">>, DataList),
 
   case gateway_util:validate_name(Name) of
     true -> HandlerBinPathChain = gateway_util:extract_binpathchain_from_nowref(Handler),
@@ -98,7 +99,7 @@ handle_join_channel(DataList, State = #state{rabbit_handler = RabbitHandler, pri
             HookBinPath = [ <<"client">>, HandlerSessionId, <<"system">>, <<"hookChannelHandler">> ],
             HookRef = gateway_util:binpathchain_to_nowref(HookBinPath),
 
-            gen_server:cast(RabbitHandler, {join_channel, Name, binary_to_list(HandlerSessionId)}),
+            gen_server:cast(RabbitHandler, {join_channel, Name, binary_to_list(HandlerSessionId), Writeable}),
             %% Create a dummy workerpool so GETOPS can work
             WorkerPoolMessage = [
                                   {<<"destination">>, HookRef },
@@ -129,6 +130,7 @@ handle_get_channel(DataList, State = #state{rabbit_handler = RabbitHandler
   Callback = proplists:get_value(<<"callback">>, DataList),
   Name = proplists:get_value(<<"name">>, DataList),
   case gateway_util:validate_name(Name) of
+
     true -> %% Ensure links are made
             gen_server:cast(RabbitHandler, {get_channel, Name, SessionId}),
             case Callback of 

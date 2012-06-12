@@ -91,16 +91,19 @@ handle_cast({leave_workerpool, Name}, State = #state{channel = Channel, subscrip
                                           Subscriptions
   end,
   {noreply, State#state{subscriptions=NewSubs}};
-handle_cast({join_channel, Name, HandlerSessionId}, State = #state{channel = Channel, api_key = ApiKey}) ->
+handle_cast({join_channel, Name, HandlerSessionId, Writeable}, State = #state{channel = Channel, api_key = ApiKey}) ->
   ChannelExchange = list_to_binary([<<"F_">>, Name, <<"_">>, ApiKey]),
   ExchangeDeclare = #'exchange.declare'{exchange = ChannelExchange,
                                   type = <<"fanout">>
                                   %, arguments = [{"alternate-exchange", longstr, "F_ERROR"}]
                                 },
   #'exchange.declare_ok'{} = amqp_channel:call(Channel, ExchangeDeclare),
-  ExchangeBinding = #'exchange.bind'{source  = list_to_binary([<<"T_">>, HandlerSessionId]),
-                                 destination = ChannelExchange,
-                                 routing_key = list_to_binary([ApiKey, <<".channel.">>, Name, <<".#">>])},
+  if Writeable ->
+      ExchangeBinding = #'exchange.bind'{source  = list_to_binary([<<"T_">>, HandlerSessionId]),
+					 destination = ChannelExchange,
+					 routing_key = list_to_binary([ApiKey, <<".channel.">>, Name, <<".#">>])};
+     true -> ok
+  end,
   #'exchange.bind_ok'{} = amqp_channel:call(Channel, ExchangeBinding),
   QueueBinding = #'queue.bind'{queue = list_to_binary(["C_", HandlerSessionId]),
                                exchange = ChannelExchange},
