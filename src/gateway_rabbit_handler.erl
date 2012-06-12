@@ -98,13 +98,14 @@ handle_cast({join_channel, Name, HandlerSessionId, Writeable}, State = #state{ch
                                   %, arguments = [{"alternate-exchange", longstr, "F_ERROR"}]
                                 },
   #'exchange.declare_ok'{} = amqp_channel:call(Channel, ExchangeDeclare),
-  if Writeable ->
+  if 
+    Writeable ->
       ExchangeBinding = #'exchange.bind'{source  = list_to_binary([<<"T_">>, HandlerSessionId]),
 					 destination = ChannelExchange,
-					 routing_key = list_to_binary([ApiKey, <<".channel.">>, Name, <<".#">>])};
-     true -> ok
+					 routing_key = list_to_binary([ApiKey, <<".channel.">>, Name, <<".#">>])},
+      #'exchange.bind_ok'{} = amqp_channel:call(Channel, ExchangeBinding);
+    true -> ok
   end,
-  #'exchange.bind_ok'{} = amqp_channel:call(Channel, ExchangeBinding),
   QueueBinding = #'queue.bind'{queue = list_to_binary(["C_", HandlerSessionId]),
                                exchange = ChannelExchange},
                                % routing_key = <<"#">>},
