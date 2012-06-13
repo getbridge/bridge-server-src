@@ -147,7 +147,14 @@ handle_cast({publish_message, SessionId, Message}, State = #state{channel = Chan
                                           routing_key = <<ApiKey/binary, ".", RoutingKey/binary>>,
                                           immediate = true
                                         },
-          Src = {<<"source">>, list_to_binary(SessionId)},
+          BinSessionId = if
+            is_binary(SessionId) ->
+              SessionId;
+            true ->
+              list_to_binary(SessionId)
+          end,
+
+          Src = {<<"source">>, BinSessionId},
           Payload = gateway_util:encode( {[Src|Message]} ),
           Content = #amqp_msg{payload = Payload},
 
