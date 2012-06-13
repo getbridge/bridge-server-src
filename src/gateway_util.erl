@@ -29,7 +29,7 @@ current_time() ->
   calendar:datetime_to_gregorian_seconds(calendar:universal_time()).
 
 gen_id() ->
-  unicode:characters_to_list(random_str(8, {"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n"})).
+  unicode:characters_to_list(random_str(16, {"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n"})).
 
 random_str(0, _) -> [];
 random_str(Len, Chars) -> [random_char(Chars)|random_str(Len-1, Chars)].
