@@ -17,14 +17,16 @@ init([]) ->
   {ok, Hostname} = application:get_env(gateway, hostname),
   HostnameBin = list_to_binary(Hostname),
   {ok, WebPort} = application:get_env(gateway, web_port),
+  {ok, HTTPSPort} = application:get_env(gateway, https_port),
   {ok, TCPPort} = application:get_env(gateway, tcp_port),
+  {ok, SSLPort} = application:get_env(gateway, ssl_port),
   {ok, Redirector} = application:get_env(gateway, redirector_url),
   
   ets:new(meter_table, [public, named_table, {write_concurrency,true}]),
   ets:new(meter_table_public, [public, named_table, {write_concurrency,true}]),
   
   BridgeId = gateway_util:md5_hex(Hostname ++ integer_to_list(TCPPort) ++ integer_to_list(WebPort)),
-  report_add_server(HostnameBin, TCPPort, WebPort),
+  report_add_server(HostnameBin, TCPPort, WebPort, SSLPort, HTTPSPort),
   
   erlang:send_after(10000, self(), send_server_usage),
   
@@ -89,9 +91,15 @@ code_change(_OldVsn, State, _Extra) ->
 %% -- Functions
 
   
-report_add_server(Hostname, TCPPort, WebPort) ->
+report_add_server(Hostname, TCPPort, WebPort,  SSLPort, HTTPSPort) ->
   {ok, Redirector} = application:get_env(gateway, redirector_url),
-  Report = gateway_util:encode({[{host, Hostname}, {tcp_port, TCPPort}, {web_port, WebPort}]}),
+  Report = gateway_util:encode({[
+                                  {host, Hostname},
+                                  {tcp_port, TCPPort},
+                                  {web_port, WebPort},
+                                  {ssl_port, SSLPort},
+                                  {https_port, HTTPSPort}
+                                ]}),
   httpc:request(post, {Redirector ++ "addServer/", [], "application/json", Report}, [], [
       {sync, false},
       {body_format, binary}, 

@@ -7,6 +7,8 @@
               {env,[{hostname,"localhost"},
                     {web_port,8091},
                     {tcp_port,8090},
+                    {https_port,8043},
+                    {ssl_port,8093},
                     {redirector_url,"http://localhost:7001/ctl/"},
                     {ctl_port, 7002},
                     {reconnect_timeout,5000},
