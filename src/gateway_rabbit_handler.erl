@@ -216,19 +216,25 @@ handle_info({#'basic.deliver'{}, Content},
   try
     {ok, Message} = gateway_util:decode(Payload),
     {DataList} = Message,
+    case proplists:is_defined(<<"source">>, DataList) of
+      true ->
+        bind_refs({[{<<"ref">>, [<<"client">>, proplists:get_value(<<"source">>, DataList)]}]}, State);
+      _ ->
+        ok
+    end,
     case proplists:is_defined(<<"args">>, DataList) of
-      false ->  %% Rabbit handler system call
-                [CastHead | CastArgs] = proplists:get_value(<<"cast">>, DataList),
-                Cast = list_to_tuple([list_to_atom(CastHead) | CastArgs]),
-                gen_server:cast(self(), Cast);
-       true ->  Links = gateway_util:now_decode(Message),
-                case Links of
-                    undefined -> ok;
-                    _ ->  lists:foreach(fun(Link) -> 
+      %% Rabbit handler system call
+      false -> [CastHead | CastArgs] = proplists:get_value(<<"cast">>, DataList),
+	       Cast = list_to_tuple([list_to_atom(CastHead) | CastArgs]),
+	       gen_server:cast(self(), Cast);
+       true -> Links = gateway_util:now_decode(Message),
+	       case Links of
+		 undefined -> ok;
+		 _ ->  lists:foreach(fun(Link) -> 
                                          bind_refs(Link, State)
-                                        end, Links),
-                          gen_server:cast(Protocol, {send, Payload})
-                end
+				     end, Links),
+		       gen_server:cast(Protocol, {send, Payload})
+	       end
     end
   catch
     Reason -> gen_server:cast(Protocol, {error, 205, ["Could not parse message delivery", Reason, erlang:get_stacktrace()]})
