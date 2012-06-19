@@ -17,10 +17,17 @@ init([]) ->
   {ok, Hostname} = application:get_env(gateway, hostname),
   HostnameBin = list_to_binary(Hostname),
   {ok, WebPort} = application:get_env(gateway, web_port),
-  {ok, HTTPSPort} = application:get_env(gateway, https_port),
   {ok, TCPPort} = application:get_env(gateway, tcp_port),
-  {ok, SSLPort} = application:get_env(gateway, ssl_port),
   {ok, Redirector} = application:get_env(gateway, redirector_url),
+  
+  case application:get_env(gateway, secure) of
+    {ok, true} ->
+      {ok, HTTPSPort} = application:get_env(gateway, https_port),
+      {ok, SSLPort} = application:get_env(gateway, ssl_port);
+    _ ->
+      HTTPSPort = undefined,
+      SSLPort = undefined
+  end,
   
   ets:new(meter_table, [public, named_table, {write_concurrency,true}]),
   ets:new(meter_table_public, [public, named_table, {write_concurrency,true}]),
@@ -93,13 +100,7 @@ code_change(_OldVsn, State, _Extra) ->
   
 report_add_server(Hostname, TCPPort, WebPort,  SSLPort, HTTPSPort) ->
   {ok, Redirector} = application:get_env(gateway, redirector_url),
-  Report = gateway_util:encode({[
-                                  {host, Hostname},
-                                  {tcp_port, TCPPort},
-                                  {web_port, WebPort},
-                                  {ssl_port, SSLPort},
-                                  {https_port, HTTPSPort}
-                                ]}),
+  Report = construct_report(Hostname, TCPPort, WebPort, SSLPort, HTTPSPort),
   httpc:request(post, {Redirector ++ "addServer/", [], "application/json", Report}, [], [
       {sync, false},
       {body_format, binary}, 
@@ -118,4 +119,18 @@ report_add_server(Hostname, TCPPort, WebPort,  SSLPort, HTTPSPort) ->
             end
         end}
   ]).
-  
+
+construct_report(Hostname, TCPPort, WebPort, undefined, undefined) ->
+  gateway_util:encode({[
+                        {host, Hostname},
+                        {tcp_port, TCPPort},
+                        {web_port, WebPort}
+                      ]});
+construct_report(Hostname, TCPPort, WebPort, SSLPort, HTTPSPort)->
+  gateway_util:encode({[
+                        {host, Hostname},
+                        {tcp_port, TCPPort},
+                        {web_port, WebPort},
+                        {ssl_port, SSLPort},
+                        {https_port, HTTPSPort}
+                      ]}).
