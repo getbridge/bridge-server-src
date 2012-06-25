@@ -1,10 +1,10 @@
 #!/bin/bash
-rm -f "rel/bc-latest"
+#rm -f "rel/bc-latest"
 rm -rf rel/bc
 set -e
 ./rebar generate
-sed 's/__VERSION__/${VER}/g' $PWD/bridge-wrapper > rel/bc/bin/bridge
-chmod u+x rel/bc/bin/bridge
+#sed 's/__VERSION__/${VER}/g' $PWD/bridge-wrapper > rel/bc/bin/bridge
+#chmod u+x rel/bc/bin/bridge
 cd rel/bc/lib/
 echo -n "Unpacking .ez files"
 for f in *.ez
@@ -26,6 +26,6 @@ mv bc start
 cd ../../
 rm -rf "bc_rel-${VER}"
 mv bc "bc_rel-${VER}"
-echo $VER > CURRENT_VERSION
-ln -sf "bc_rel-${VER}" "bc-latest"
+#echo $VER > CURRENT_VERSION
+#ln -sf "bc_rel-${VER}" "bc-latest"
 echo "OK"
