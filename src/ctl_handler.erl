@@ -50,7 +50,7 @@ req_handler(State, Body, Req2) ->
   {ok, Resp, State}.
 
 valid_key(BinApiKey) ->
-  is_binary(BinApiKey) andalso bit_size(BinApiKey) / 8 == 8.
+  is_binary(BinApiKey).
 
 add_key(PrivKey, PubKey, Limit) ->
   % meter_table[api_key] -> {is_expired, when_expired, #calls, limit, public_api_key}
