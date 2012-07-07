@@ -4,4 +4,4 @@
 % impl - whatever handle `callback_module` needs to handle send/close
 % calls
 
--record(gateway_connection, {session_id, client, impl, callback_module}).
+-record(gateway_connection, {client, impl, callback_module}).

@@ -14,6 +14,7 @@
 -include_lib("amqp_client/include/amqp_client.hrl").
 -include_lib("gateway.hrl").
 -include_lib("metering.hrl").
+-include_lib("messages.hrl").
 
 start_link() ->
     gen_server:start_link(?MODULE, [], []).
@@ -21,174 +22,119 @@ start_link() ->
 init([]) ->
   {ok, #state{}}.
 
-handle_join_worker_pool(_, State = #state{privilege = unpriv}) ->
-  gen_server:cast(self(), {error, 102, "Publish service permissions denied"}),
-  State;
-handle_join_worker_pool(DataList, State = #state{rabbit_handler = RabbitHandler
-                                                 , sessionid = SessionId
-                                                 , privilege = priv}) ->
-  Callback = proplists:get_value(<<"callback">>, DataList),
-  Name = proplists:get_value(<<"name">>, DataList),
+% Utility methods
+invoke_rpc(Ref, Args, #state{rabbit_handler = Router, sessionid = SessionId}) ->
+  Message = [{<<"destination">>, Ref }, {<<"args">>, Args }],
+  gen_server:cast(Router, {publish_message, SessionId, Message}).
 
-  case gateway_util:validate_name(Name) of
-    true -> gen_server:cast(RabbitHandler, {join_workerpool, Name}),
-            case Callback of
-              undefined -> State;
-              _ -> ServicePathChain = gateway_util:extract_binpathchain_from_nowref(Callback),
-                   MethodPathChain  = lists:append(ServicePathChain, [<<"callback">>]),
-                   Message =   [
-                     {<<"destination">>, gateway_util:binpathchain_to_nowref(MethodPathChain) },
-                     {<<"args">>, [Name] }
-                   ],
-                   gen_server:cast(RabbitHandler, {publish_message, SessionId, Message})
-            end;
-    false -> gen_server:cast(self(), {error, 103, <<"Invalid service name: ", Name/binary>>})
-  end,
-  State.
 
-handle_leave_worker_pool(_, State = #state{privilege = unpriv}) ->
-  gen_server:cast(self(), {error, 113, "Unpublish service permissions denied"}),
-  State;
-handle_leave_worker_pool(DataList, State = #state{rabbit_handler = RabbitHandler
-                                                 , sessionid = SessionId
-                                                 , privilege = priv}) ->
-  Callback = proplists:get_value(<<"callback">>, DataList),
-  Name = proplists:get_value(<<"name">>, DataList),
-  
-  case gateway_util:validate_name(Name) of
-    true -> gen_server:cast(RabbitHandler, {leave_workerpool, Name}),
-            case Callback of
-              undefined -> State;
-              _ -> ServicePathChain = gateway_util:extract_binpathchain_from_nowref(Callback),
-                   MethodPathChain  = lists:append(ServicePathChain, [<<"callback">>]),
-                   Message =   [
-                     {<<"destination">>, gateway_util:binpathchain_to_nowref(MethodPathChain) },
-                     {<<"args">>, [Name] }
-                   ],
-                   gen_server:cast(RabbitHandler, {publish_message, SessionId, Message})
-            end;
-    false -> gen_server:cast(self(), {error, 114, <<"Invalid service name: ", Name/binary>>})
-  end,
-  State.
-  
-handle_getops(DataList, State = #state{rabbit_handler = RabbitHandler, sessionid = SessionId}) ->
-  Callback = proplists:get_value(<<"callback">>, DataList),
-  Name = proplists:get_value(<<"name">>, DataList),
-  Client = proplists:get_value(<<"client">>, DataList),
-  DestPath = case Client of
-    undefined -> [ <<"named">>, Name, <<"system">>, <<"getService">> ];
-            _ -> [ <<"client">>, Client, <<"system">>, <<"getService">> ]
-  end,
-  DestRef = gateway_util:binpathchain_to_nowref(DestPath),
-  Message =   [
-                {<<"destination">>,  DestRef},
-                {<<"args">>, [Name, Callback]}
-              ],
-  gen_server:cast(RabbitHandler, {publish_message, SessionId, Message}),
-  State.
+invoke_cast(Ref, Args, SessionId, #state{rabbit_handler = Router}) ->
+  Message = [{<<"destination">>, Ref}, {<<"cast">>, Args}],
+  gen_server:cast(Router, {publish_message, SessionId, Message}).
 
-handle_join_channel(_, State = #state{privilege = unpriv}) ->
-  gen_server:cast(self(), {error, 104, "Join channel permissions denied"}),
-  State;
-handle_join_channel(DataList, State = #state{rabbit_handler = RabbitHandler, privilege = priv}) ->
-  Callback = proplists:get_value(<<"callback">>, DataList),
-  Handler = proplists:get_value(<<"handler">>, DataList),
-  Name = proplists:get_value(<<"name">>, DataList),
-  Writeable = proplists:get_value(<<"writeable">>, DataList),
 
-  case gateway_util:validate_name(Name) of
-    true -> HandlerBinPathChain = gateway_util:extract_binpathchain_from_nowref(Handler),
-            HandlerSessionId = lists:nth(2, HandlerBinPathChain),
+call_callback(undefined, _ , _) ->
+  ok;
 
-            HookBinPath = [ <<"client">>, HandlerSessionId, <<"system">>, <<"hookChannelHandler">> ],
-            HookRef = gateway_util:binpathchain_to_nowref(HookBinPath),
+call_callback(CBRef, Args, State) ->
+  CBRef2 = gateway_reference:set_method(CBRef, <<"callback">>),
+  invoke_rpc(CBRef2, Args, State).
+make_hookchannel_reference(ClientRef) ->
+  SessionId = gateway_reference:get_destination_id(ClientRef),
+  SystemRef = gateway_reference:client_reference(SessionId, <<"system">>),
+  gateway_reference:set_method(SystemRef, <<"hookChannelHandler">>).
 
-            gen_server:cast(RabbitHandler, {join_channel, Name, binary_to_list(HandlerSessionId), Writeable}),
-            %% Create a dummy workerpool so GETOPS can work
-            WorkerPoolMessage = [
-                                  {<<"destination">>, HookRef },
-                                  {<<"cast">>, ["join_workerpool", <<"channel:", Name/binary>>] }
-                                ],
-            gen_server:cast(RabbitHandler, {publish_message, HandlerSessionId, WorkerPoolMessage}),
-            Message = case Callback of 
-              undefined -> [
-                            {<<"destination">>, HookRef },
-                            {<<"args">>, [Name, Handler] }
-                           ];
-                      _ -> [
-                            {<<"destination">>, HookRef },
-                            {<<"args">>, [Name, Handler, Callback] }
-                           ]
-            end,
-            gen_server:cast(RabbitHandler, {publish_message, HandlerSessionId, Message});
-    false -> gen_server:cast(self(), {error, 105, <<"Invalid channel name: ", Name/binary>>})
-  end,
-  State.
 
-handle_get_channel(_, State = #state{privilege = unpriv}) ->
-  gen_server:cast(self(), {error, 106, "Get channel permissions denied"}),
-  State;
-handle_get_channel(DataList, State = #state{rabbit_handler = RabbitHandler
-                                            , sessionid = SessionId
-                                            , privilege = priv}) ->
-  Callback = proplists:get_value(<<"callback">>, DataList),
-  Name = proplists:get_value(<<"name">>, DataList),
-  case gateway_util:validate_name(Name) of
+append_callback_to_args(Args, undefined) ->
+  Args;
 
-    true -> %% Ensure links are made
-            gen_server:cast(RabbitHandler, {get_channel, Name, SessionId}),
-            case Callback of 
-              undefined -> State;
-                      _ -> handle_getops([{<<"name">>, <<"channel:", Name/binary>>}, {<<"callback">>, Callback}], State)
-            end;
-    false -> gen_server:cast(self(), {error, 107, <<"Invalid channel name: ", Name/binary>>}),
-             State
-  end,
-  State.
+append_callback_to_args(Args, Callback) ->
+  Args ++ [Callback].
 
-handle_leave_channel(_, State = #state{privilege = unpriv}) ->
-  gen_server:cast(self(), {error, 108, "Leave channel permissions denied"}),
-  State;
-handle_leave_channel(DataList, State = #state{rabbit_handler = RabbitHandler
-                                              , sessionid = SessionId
-                                              , privilege = priv}) ->
-  Callback = proplists:get_value(<<"callback">>, DataList),
-  Handler = proplists:get_value(<<"handler">>, DataList),
-  Name = proplists:get_value(<<"name">>, DataList),
 
-  case gateway_util:validate_name(Name) of
-    true -> HandlerBinPathChain = gateway_util:extract_binpathchain_from_nowref(Handler),
-            HandlerSessionId = lists:nth(2, HandlerBinPathChain),
+% API handlers
 
-            gen_server:cast(RabbitHandler, {leave_channel, Name, binary_to_list(HandlerSessionId)}),
-            case Callback of
-              undefined -> State;
-              _ -> ServicePathChain = gateway_util:extract_binpathchain_from_nowref(Callback),
-                   MethodPathChain  = lists:append(ServicePathChain, [<<"callback">>]),
-                   Message =   [
-                     {<<"destination">>, gateway_util:binpathchain_to_nowref(MethodPathChain) },
-                     {<<"args">>, [Name] }
-                   ],
-                   gen_server:cast(RabbitHandler, {publish_message, SessionId, Message})
-            end;
-    false -> gen_server:cast(self(), {error, 109, <<"Invalid channel name: ", Name/binary>>})
-  end,
-  State.
+join_worker_pool(_, #state{privilege = unpriv}) ->
+  gateway_error:no_publish_perms();
 
-handle_send(Data, State = #state{sessionid = SessionId, rabbit_handler = RabbitHandler}) ->
-  {DataList} = proplists:get_value(<<"destination">>,Data),
-  Pathchain = proplists:get_value(<<"ref">>, DataList),
-  
-  %% Erlang does not allow expression as guards, so store these booleans
-  SystemCall = lists:nth(3, Pathchain) == <<"system">>,
-  
-  if
-    SystemCall ->
-      gen_server:cast(self(), {error, 111, "System service calls are not allowed"});
-    true ->
-      gen_server:cast(RabbitHandler, {publish_message, SessionId, Data})
-  end,
-  State.
+join_worker_pool(#join_workerpool{name = {invalid, Name}}, _) ->
+  gateway_error:invalid_service_name(Name);
+
+join_worker_pool(#join_workerpool{name = Name, callback = Callback}, State) ->
+  gen_server:cast(State#state.rabbit_handler, {join_workerpool, Name}),
+  call_callback(Callback, [Name], State).
+
+
+leave_worker_pool(_, #state{privilege = unpriv}) ->
+  gateway_error:no_unpublish_perms();
+
+leave_worker_pool(#leave_workerpool{name = {invalid, Name}}, _) ->
+  gateway_error:invalid_service_name(Name);
+
+leave_worker_pool(#leave_workerpool{name = Name, callback = Callback}, State) ->
+  gen_server:cast(State#state.rabbit_handler, {leave_workerpool, Name}),
+  call_callback(Callback, [Name], State).
+
+
+getops(#get_ops{callback = undefined}, State) ->
+  ok;
+
+getops(#get_ops{client = undefined, name = Name, callback = Callback}, State) ->
+  DestRef =  gateway_reference:service_reference(Name, <<"system">>),
+  DestRef2 = gateway_reference:set_method(DestRef, <<"getService">>),
+  invoke_rpc(DestRef2, [Name, Callback], State);
+
+getops(#get_ops{client = Client, name = Name, callback = Callback}, State) ->
+  DestRef =  gateway_reference:client_reference(Client, <<"system">>),
+  DestRef2 = gateway_reference:set_method(DestRef, <<"getService">>),
+  invoke_rpc(DestRef2, [Name, Callback], State).
+
+
+join_channel(_, #state{privilege = unpriv}) ->
+  gateway_error:no_join_perms();
+
+join_channel(#join_channel{name = {invalid, Name}}, _) ->
+  gateway_error:invalid_channel_name(Name);
+
+join_channel(#join_channel{name = Name, handler = Handler, callback = Callback, writeable = Writeable}, State) ->
+  ClientRef = make_hookchannel_reference(Handler),
+  gen_server:cast(State#state.rabbit_handler, {join_channel, Name, gateway_reference:get_destination_id(ClientRef), Writeable}),
+  % invoke_cast(ClientRef, ["join_workerpool", <<"channel:", Name/binary>>], SessionId, State),
+  Args = append_callback_to_args([Name, Handler], Callback),
+  invoke_rpc(ClientRef, Args, State).
+
+
+get_channel(_, State = #state{privilege = unpriv}) ->
+  gateway_error:no_getchannel_perms();
+
+get_channel(#get_channel{name = {invalid, Name}}, _) ->
+  gateway_error:invalid_channel_name(Name);
+
+get_channel(#get_channel{name = Name, callback = Callback}, State = #state{sessionid = SessionId, rabbit_handler = RabbitHandler}) ->
+  gen_server:cast(RabbitHandler, {get_channel, Name, SessionId}),
+  getops(#get_ops{name = <<"channel:", Name/binary>>, callback = Callback}, State).
+
+
+leave_channel(_, State = #state{privilege = unpriv}) ->
+  gateway_error:no_leavechannel_perms();
+
+leave_channel(#leave_channel{name = {invalid, Name}}, _) ->
+  gateway_error:invalid_channel_name(Name);
+
+leave_channel(#leave_channel{name = Name, handler = Handler, callback = Callback}, State ) ->
+    HandlerSessionId = gateway_reference:get_destination_id(Handler),
+    gen_server:cast(State#state.rabbit_handler, {leave_channel, Name, binary_to_list(HandlerSessionId)}),
+    call_callback(Callback, [Name], State).
+
+
+send(Data = #send{destination = Destination}, State) ->
+  SystemCall = gateway_reference:get_object_id(Destination) == <<"system">>,
+  send0(Data, SystemCall, State).
+send0(_, true, _) ->
+  gateway_error:system_service();
+send0(#send{destination = Destination, args = Args}, _, State) ->
+  invoke_rpc(Destination, Args, State).
+
 
 verify_secret([null, null]) ->
   Session = [gateway_util:gen_id(), gateway_util:gen_id()],
@@ -201,63 +147,58 @@ verify_secret(Session) ->
         _     -> verify_secret([null, null])
   end.
 
-handle_connect(DataList, State = #state{outbound_connection = OutboundConnection}) ->
-  [Id, Secret] = verify_secret(proplists:get_value(<<"session">>, DataList)),
-  ApiKey = proplists:get_value(<<"api_key">>, DataList),
+connect(#connect{session = Session, api_key = ApiKey}, State = #state{outbound_connection = OutboundConnection}) ->
+  [Id, Secret] = verify_secret(Session),
 
-  OutConn = OutboundConnection#gateway_connection{session_id = Id},
-  Mod = OutConn#gateway_connection.callback_module,
-  
-  case ctl_handler:lookup_priv(ApiKey) of
-    false ->
-      gen_server:cast(self(), {error, 220, "No valid api key provided."}),
-      State#state{sessionid = Id, outbound_connection = OutConn};
-    {Privilege, BinApiKey} ->
-      Mod:send(OutConn, list_to_binary(lists:concat([Id, "|", Secret]))),
-      %% Try to find old rabbit handler
-      case ets:lookup(rabbithandlers, Id) of
-        [{Id, {Ref, RabbitHandler}}] -> erlang:cancel_timer(Ref),
-                                        gen_server:cast(RabbitHandler, resume_subs),
-                                        gen_server:cast(RabbitHandler, {change_protocol, self()}),
-                                        ets:delete(rabbithandlers, Id);
-                             _       -> {ok, RabbitHandler} = gateway_rabbit_sup:start_child(),
-                                        gen_server:call(RabbitHandler, {ready, self(), Id, BinApiKey})
-      end,
-      State#state{sessionid = Id, outbound_connection = OutConn, rabbit_handler = RabbitHandler, api_key = BinApiKey, privilege = Privilege}
-  end.
+  IsValidKey = ctl_handler:lookup_priv(ApiKey),
+  initialize_state(IsValidKey, Id, Secret,  State).
+
+initialize_state(ApiKey = false, Id, _, State) ->
+  gateway_error:no_valid_api_key(),
+  State#state{sessionid = Id};
+
+initialize_state({Privilege, ApiKey}, Id, Secret, State) ->
+  gen_server:cast(self(), {send, list_to_binary(lists:concat([Id, "|", Secret]))}),
+  IsReconnect =  ets:lookup(rabbithandlers, Id),
+  Router = setup_routing(IsReconnect, Id, ApiKey),
+  State#state{sessionid = Id, rabbit_handler = Router, api_key = ApiKey, privilege = Privilege}.
+
+setup_routing(_IsReconnect = [], Id, ApiKey) ->
+  {ok, Router} = gateway_rabbit_sup:start_child(),
+  gen_server:call(Router, {ready, self(), Id, ApiKey}),
+  Router;
+
+setup_routing([{Id, {Timer, Router}}], Id, ApiKey) ->
+   erlang:cancel_timer(Timer),
+   gen_server:cast(Router, resume_subs),
+   gen_server:cast(Router, {change_protocol, self()}),
+   ets:delete(rabbithandlers, Id),
+   Router.
 
 handle_cast({msg, RawData}, State) ->
-  try
-    {ok, JSONDecoded} = gateway_util:decode(RawData),
-    {PropList} = JSONDecoded,
-    Command = proplists:get_value(<<"command">>, PropList),
-    Data = proplists:get_value(<<"data">>, PropList),
-    {DataList} = Data,
-    {noreply, case Command of
-      <<"SEND">> ->
-        handle_send(DataList, State);
-      <<"JOINWORKERPOOL">> ->
-        handle_join_worker_pool(DataList, State);
-      <<"LEAVEWORKERPOOL">> ->
-        handle_leave_worker_pool(DataList, State);
-      <<"JOINCHANNEL">> ->
-        handle_join_channel(DataList, State);
-      <<"GETCHANNEL">> ->
-        handle_get_channel(DataList, State);
-      <<"LEAVECHANNEL">> ->
-        handle_leave_channel(DataList, State);
-      <<"CONNECT">> ->
-        handle_connect(DataList, State);
-      <<"GETOPS">> ->
-        handle_getops(DataList, State);
-      _ ->
-        gen_server:cast(self(), {error, 221, ["Unrecognized Command", Command]}),
-        State
-    end}
-  catch
-    _:Reason -> gen_server:cast(self(), {error, 222, ["Error handling messaged", Reason, erlang:get_stacktrace()]}),
-    {noreply, State}
-  end;
+  {ok, Struct} = gateway_util:decode(RawData),
+  Record = gateway_messages:struct_to_record(Struct),
+  {noreply, case Record of
+    #send{} ->
+      send(Record, State);
+    #join_workerpool{} ->
+      join_worker_pool(Record, State);
+    #leave_workerpool{} ->
+      leave_worker_pool(Record, State);
+    #join_channel{} ->
+      join_channel(Record, State);
+    #get_channel{} ->
+      get_channel(Record, State);
+    #leave_channel{} ->
+      leave_channel(Record, State);
+    #connect{} ->
+      connect(Record, State);
+    #get_ops{} ->
+      getops(Record, State);
+    _ ->
+      gen_server:cast(self(), {error, 221, ["Unrecognized Command"]}),
+      State
+  end};
 
 handle_cast({send, Data}, State = #state{outbound_connection = OutboundConnection = #gateway_connection{callback_module = Mod}, api_key = ApiKey}) ->
   case ctl_handler:update_metering(ApiKey) of
