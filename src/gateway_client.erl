@@ -161,12 +161,16 @@ handle_leave_channel(DataList, State = #state{rabbit_handler = RabbitHandler
             HandlerSessionId = lists:nth(2, HandlerBinPathChain),
 
             gen_server:cast(RabbitHandler, {leave_channel, Name, binary_to_list(HandlerSessionId)}),
-            Message = [
-                {<<"destination">>, Callback },
-                {<<"args">>, [Name] }
-              ],
-
-            gen_server:cast(RabbitHandler, {publish_message, SessionId, Message});
+            case Callback of
+              undefined -> State;
+              _ -> ServicePathChain = gateway_util:extract_binpathchain_from_nowref(Callback),
+                   MethodPathChain  = lists:append(ServicePathChain, [<<"callback">>]),
+                   Message =   [
+                     {<<"destination">>, gateway_util:binpathchain_to_nowref(MethodPathChain) },
+                     {<<"args">>, [Name] }
+                   ],
+                   gen_server:cast(RabbitHandler, {publish_message, SessionId, Message})
+            end;
     false -> gen_server:cast(self(), {error, 109, <<"Invalid channel name: ", Name/binary>>})
   end,
   State.
