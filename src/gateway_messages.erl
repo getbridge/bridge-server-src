@@ -16,6 +16,7 @@ record_for_commmand(Command) ->
     {<<"LEAVEWORKERPOOL">>, {leave_worker_pool, ?lwp_fields}},
     {<<"JOINCHANNEL">>, {join_channel, ?jc_fields}},
     {<<"GETCHANNEL">>, {get_channel, ?gc_fields}},
+    {<<"LEAVECHANNEL">>, {leave_channel, ?lc_fields}},
     {<<"GETOPS">>, {get_ops, ?get_ops_fields}},
     {<<"SEND">>, {send, ?send_fields}}
   ],
