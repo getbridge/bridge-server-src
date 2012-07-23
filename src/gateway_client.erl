@@ -122,7 +122,9 @@ handle_command(#get_channel{name = {invalid, Name}}, State) ->
   gateway_error:invalid_channel_name(Name),
   State;
 
-handle_command(#get_channel{name = Name, callback = Callback}, State = #state{sessionid = SessionId, rabbit_handler = RabbitHandler}) ->
+handle_command(#get_channel{name = Name, callback = Callback},
+               State = #state{sessionid = SessionId,
+                              rabbit_handler = RabbitHandler}) ->
   gen_server:cast(RabbitHandler, {get_channel, Name, SessionId}),
   handle_command(#get_ops{name = <<"channel:", Name/binary>>, callback = Callback}, State);
 
@@ -134,9 +136,12 @@ handle_command(#leave_channel{name = {invalid, Name}}, State) ->
   gateway_error:invalid_channel_name(Name),
   State;
 
-handle_command(#leave_channel{name = Name, handler = Handler, callback = Callback}, State ) ->
+handle_command(#leave_channel{name = Name,
+                              handler = Handler,
+                              callback = Callback}, State ) ->
   HandlerSessionId = gateway_reference:get_destination_id(Handler),
-  gen_server:cast(State#state.rabbit_handler, {leave_channel, Name, binary_to_list(HandlerSessionId)}),
+  gen_server:cast(State#state.rabbit_handler,
+                  {leave_channel, Name, binary_to_list(HandlerSessionId)}),
   call_callback(Callback, [Name], State),
   State;
 
@@ -145,7 +150,8 @@ handle_command(Data = #send{destination = Destination}, State) ->
   SystemCall = gateway_reference:get_object_id(Destination) == <<"system">>,
   send0(Data, SystemCall, State);
 
-handle_command(#connect{session = Session, api_key = ApiKey}, State = #state{outbound_connection = OutboundConnection}) ->
+handle_command(#connect{session = Session, api_key = ApiKey},
+               State = #state{outbound_connection = OutboundConnection}) ->
   [Id, Secret] = verify_secret(Session),
   IsValidKey = ctl_handler:lookup_priv(ApiKey),
   initialize_state(IsValidKey, Id, Secret,  State).
@@ -198,7 +204,9 @@ handle_cast({msg, RawData}, State) ->
   Command = gateway_messages:struct_to_record(Struct),
   {noreply, handle_command(Command, State)};
 
-handle_cast({send, Data}, State = #state{outbound_connection = OutboundConnection = #gateway_connection{callback_module = Mod}, api_key = ApiKey}) ->
+handle_cast({send, Data},
+            State = #state{outbound_connection = OutboundConnection = #gateway_connection{callback_module = Mod},
+            api_key = ApiKey}) ->
   case ctl_handler:update_metering(ApiKey) of
     ok ->
       Mod:send(OutboundConnection, Data);
@@ -208,11 +216,12 @@ handle_cast({send, Data}, State = #state{outbound_connection = OutboundConnectio
       gen_server:cast(self(), {error, 303, "Unknown API management internal error"})
   end,
   {noreply, State};
-handle_cast({force_send, Data}, State = #state{outbound_connection = OutboundConnection = #gateway_connection{callback_module = Mod}}) ->
+handle_cast({force_send, Data},
+            State = #state{outbound_connection = OutboundConnection = #gateway_connection{callback_module = Mod}}) ->
   Mod:send(OutboundConnection, Data),
   {noreply, State};
 
-handle_cast({error, ErrorId, Message}, State = #state{sessionid = SessionId}) ->  
+handle_cast({error, ErrorId, Message}, State = #state{sessionid = SessionId}) ->
   ErrorMessage = io_lib:format("Error #~p [~p] : ~p", [ErrorId, SessionId, Message]),
   gateway_util:error(string:concat(ErrorMessage, "~n")),
 
@@ -249,7 +258,9 @@ handle_info(_Info, State) ->
   gateway_util:warn("Error #225 : Unknown Info: Ignoring: ~p~n", [_Info]),
   {noreply, State}.
 
-terminate(_, #state{sessionid = Id, rabbit_handler=RabbitHandler, outbound_connection = OutConn = #gateway_connection{callback_module = Mod}}) ->
+terminate(_, #state{sessionid = Id, 
+                    rabbit_handler=RabbitHandler,
+                    outbound_connection = OutConn = #gateway_connection{callback_module = Mod}}) ->
   {ok, ReconnectTimeout} = application:get_env(gateway, reconnect_timeout),
   Ref = erlang:send_after(ReconnectTimeout, RabbitHandler, close),
   gen_server:cast(RabbitHandler, pause_subs),
