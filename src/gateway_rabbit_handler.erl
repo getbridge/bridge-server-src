@@ -10,6 +10,7 @@
          terminate/2, code_change/3]).
 
 -record(state, {channel, protocol, subscriptions=[], exchanges=[], queues=[], sessionid, api_key}).
+-record(bridge_resource, {name, rabbit_name, rabbit_type, bridge_type}).
 
 -include_lib("amqp_client/include/amqp_client.hrl").
 -include_lib("gateway.hrl").
@@ -23,42 +24,22 @@ init([]) ->
   Channel = gen_server:call(gateway_gamqp, get_new_channel),
   {ok, #state{channel=Channel}}.
 
-handle_call({ready, Protocol, SessionId, ApiKey}, _From,
-    State = #state{
-      channel = Channel, queues=Queues, exchanges=Exchanges
-    }
-  ) ->
-  ExchangeName = list_to_binary(["T_", SessionId]),
-  ExchangeDeclare = #'exchange.declare'{exchange = ExchangeName,
-                                        type = <<"topic">>
-                                        % , arguments = [{"alternate-exchange", longstr, "F_ERROR"}]
-                                       },
-  #'exchange.declare_ok'{} = amqp_channel:call(Channel, ExchangeDeclare),
 
-  QueueName = list_to_binary(["C_", SessionId]),
-  QueueDeclare = #'queue.declare'{queue = QueueName},
-  #'queue.declare_ok'{queue = QueueName} = amqp_channel:call(Channel, QueueDeclare),
-
-  ExchangeBinding = #'exchange.bind'{source      = ExchangeName,
-                             destination = <<"T_NAMED">>,
-                             routing_key = list_to_binary([ApiKey, <<".named.#">>])},
-  #'exchange.bind_ok'{} = amqp_channel:call(Channel, ExchangeBinding),
-
-  QueueBinding = #'queue.bind'{exchange      = ExchangeName,
-                               queue = list_to_binary(["C_", SessionId]),
-                               routing_key = list_to_binary( [ApiKey, <<".client.">>, SessionId, <<".#">>] )},
-  #'queue.bind_ok'{} = amqp_channel:call(Channel, QueueBinding),
-
+handle_call({ready, Protocol, SessionId, ApiKey}, _From, State = #state{channel = Channel}) ->
+  {ok, ClientExchange} = declare(client_exchange, SessionId, ApiKey, Channel),
+  {ok, ClientQueue} = declare(client_queue, SessionId, ApiKey, Channel),
+  Namespace = get_resource(namespace, <<"NAMED">>, ApiKey),
+  bind(ClientExchange, Namespace, ApiKey, Channel),
+  bind(ClientExchange, ClientQueue, ApiKey, Channel),
   amqp_channel:register_return_handler(Channel, self()),
 
-  Sub = #'basic.consume'{queue = QueueName, no_ack = true},
-  #'basic.consume_ok'{} = amqp_channel:subscribe(Channel, Sub, self()),
+  {ok, Tag} = consume_resource(ClientQueue, Channel),
 
   {reply, ok,
     State#state{
       protocol=Protocol,
-      queues=[QueueName|Queues],
-      exchanges=[ExchangeName|Exchanges],
+      queues=[ClientQueue|State#state.queues],
+      exchanges=[ClientExchange|State#state.exchanges],
       sessionid=SessionId,
       api_key = ApiKey
     }
@@ -70,72 +51,62 @@ handle_call(_Msg, _From, State) ->
 
 handle_cast({change_protocol, Protocol}, State) ->
   {noreply, State#state{protocol=Protocol}};
-handle_cast({join_workerpool, Name}, State = #state{channel = Channel, subscriptions=Subscriptions, api_key = ApiKey}) ->
-  QueueName = list_to_binary([<<"W_">>, Name, <<"_">>, ApiKey]),
-  QueueDeclare = #'queue.declare'{queue = QueueName},
-  #'queue.declare_ok'{queue = QueueName} = amqp_channel:call(Channel, QueueDeclare),
-  QueueBinding = #'queue.bind'{queue = QueueName,
-                               exchange = <<"T_NAMED">>,
-                               routing_key = list_to_binary([ApiKey, <<".named.">>, Name, <<".#">>])},
-  #'queue.bind_ok'{} = amqp_channel:call(Channel, QueueBinding),
 
-  Sub = #'basic.consume'{queue = QueueName, no_ack = true},
-  #'basic.consume_ok'{consumer_tag = Tag} = amqp_channel:subscribe(Channel, Sub, self()),
-  {noreply, State#state{subscriptions=[{QueueName, Tag}|Subscriptions]}};
-handle_cast({leave_workerpool, Name}, State = #state{channel = Channel, subscriptions=Subscriptions, api_key = ApiKey, protocol = Protocol}) ->
-  QueueName = list_to_binary([<<"W_">>, Name, <<"_">>, ApiKey]),
+handle_cast({join_workerpool, Name}, 
+            State = #state{channel = Channel,
+                           subscriptions=Subscriptions,
+                           api_key = ApiKey}) ->
+  {ok, Service} = declare(service, Name, ApiKey, Channel),
+  DefaultNamespace = get_resource(namespace, <<"NAMED">>, ApiKey),
+  bind(Service, DefaultNamespace, Channel, ApiKey),
+  {ok, Tag} = consume_resource(Service, Channel),
+  {noreply, State#state{subscriptions=[{Service#bridge_resource.name, Tag}|Subscriptions]}};
+
+handle_cast({leave_workerpool, Name},  State = #state{subscriptions=Subscriptions}) ->
+  QueueName = list_to_binary([<<"W_">>, Name, <<"_">>, State#state.api_key]),
   NewSubs = case lists:keytake(QueueName, 1, Subscriptions) of
-    {value, {QueueName, Tag}, NewList} -> amqp_channel:call(Channel, #'basic.cancel'{consumer_tag = Tag}),
-                                          NewList;
-                                 false -> gen_server:cast(Protocol, {error, 115, ["Cannot unpublish service that was not published", Name]}),
-                                          Subscriptions
+    {value, {QueueName, Tag}, NewList} -> 
+       amqp_channel:call(State#state.channel, #'basic.cancel'{consumer_tag = Tag}),
+       NewList;
+     false -> 
+       gen_server:cast(State#state.protocol,
+                      {error, 115, ["Cannot unpublish service that was not published", Name]}),
+       Subscriptions
   end,
   {noreply, State#state{subscriptions=NewSubs}};
-handle_cast({join_channel, Name, HandlerSessionId, Writeable}, State = #state{channel = Channel, api_key = ApiKey}) ->
-  ChannelExchange = list_to_binary([<<"F_">>, Name, <<"_">>, ApiKey]),
-  ExchangeDeclare = #'exchange.declare'{exchange = ChannelExchange,
-                                  type = <<"fanout">>
-                                  %, arguments = [{"alternate-exchange", longstr, "F_ERROR"}]
-                                },
-  #'exchange.declare_ok'{} = amqp_channel:call(Channel, ExchangeDeclare),
-  if 
-    Writeable ->
-      ExchangeBinding = #'exchange.bind'{source  = list_to_binary([<<"T_">>, HandlerSessionId]),
-					 destination = ChannelExchange,
-					 routing_key = list_to_binary([ApiKey, <<".channel.">>, Name, <<".#">>])},
-      #'exchange.bind_ok'{} = amqp_channel:call(Channel, ExchangeBinding);
+
+handle_cast({join_channel, Name, HandlerSessionId, Writeable},
+             State = #state{channel = Channel, api_key = ApiKey}) ->
+ {ok, Chan} = declare(channel, Name, ApiKey, Channel),
+ ClientQueue = get_resource(client_queue, HandlerSessionId, ApiKey),
+ ClientExchange = get_resource(client_exchange, HandlerSessionId, ApiKey),
+ bind(Chan, ClientQueue, ApiKey, Channel),
+  if
+    Writeable -> bind(ClientExchange, Chan, ApiKey, Channel);
     true -> ok
   end,
-  QueueBinding = #'queue.bind'{queue = list_to_binary(["C_", HandlerSessionId]),
-                               exchange = ChannelExchange},
-                               % routing_key = <<"#">>},
-  #'queue.bind_ok'{} = amqp_channel:call(Channel, QueueBinding),
-  {noreply, State};
-handle_cast({get_channel, Name, HandlerSessionId}, State = #state{channel = Channel, api_key = ApiKey}) ->
-  ChannelExchange = list_to_binary([<<"F_">>, Name, <<"_">>, ApiKey]),
-  ExchangeDeclare = #'exchange.declare'{exchange = ChannelExchange,
-                                  type = <<"fanout">>
-                                  %, arguments = [{"alternate-exchange", longstr, "F_ERROR"}]
-                                },
-  #'exchange.declare_ok'{} = amqp_channel:call(Channel, ExchangeDeclare),
-  ExchangeBinding = #'exchange.bind'{source  = list_to_binary([<<"T_">>, HandlerSessionId]),
-                                 destination = ChannelExchange,
-                                 routing_key = list_to_binary([ApiKey, <<".channel.">>, Name, <<".#">>])},
-  #'exchange.bind_ok'{} = amqp_channel:call(Channel, ExchangeBinding),
-  {noreply, State};
-handle_cast({leave_channel, Name, HandlerSessionId}, State = #state{channel = Channel, api_key = ApiKey}) ->
-  ChannelExchange = list_to_binary([<<"F_">>, Name, <<"_">>, ApiKey]),
-  ExchangeBinding = #'exchange.unbind'{source  = list_to_binary(["T_", HandlerSessionId]),
-                                 destination = ChannelExchange,
-                                 routing_key = list_to_binary([ApiKey, <<".channel.">>, Name, <<".#">>])},
-  #'exchange.unbind_ok'{} = amqp_channel:call(Channel, ExchangeBinding),
-  QueueBinding = #'queue.unbind'{queue = list_to_binary(["C_", HandlerSessionId]),
-                               exchange = ChannelExchange},
-                               % routing_key = <<"#">>},
-  #'queue.unbind_ok'{} = amqp_channel:call(Channel, QueueBinding),
   {noreply, State};
 
-handle_cast({publish_message, SessionId, Message}, State = #state{channel = Channel, api_key = ApiKey, protocol = Protocol}) ->
+handle_cast({get_channel, Name, HandlerSessionId},
+            State = #state{channel = Channel, api_key = ApiKey}) ->
+  {ok, Chan} = declare(channel, Name, ApiKey, Channel) ,
+  ClientExchange =  get_resource(client_exchange, HandlerSessionId, ApiKey),
+  bind(ClientExchange, Chan, ApiKey, Channel),
+  {noreply, State};
+
+handle_cast({leave_channel, Name, HandlerSessionId},
+            State = #state{channel = Channel, api_key = ApiKey}) ->
+  ChannelExchange = get_resource(channel, Name, ApiKey),
+  ClientExchange = get_resource(client_exchange, HandlerSessionId, ApiKey),
+  ClientQueue = get_resource(client_queue, HandlerSessionId, ApiKey),
+  unbind(ClientExchange, ChannelExchange, ApiKey, Channel),
+  unbind(ChannelExchange, ClientQueue, ApiKey, Channel),
+  {noreply, State};
+
+handle_cast({publish_message, SessionId, Message},
+           State = #state{channel = Channel,
+                          api_key = ApiKey,
+                          protocol = Protocol}) ->
   Destination = proplists:get_value(<<"destination">>, Message),
 
   case gateway_util:extract_pathstring_from_nowref(Destination) of
@@ -229,11 +200,11 @@ handle_info({#'basic.deliver'{}, Content},
 	       gen_server:cast(self(), Cast);
        true -> Links = gateway_util:now_decode(Message),
 	       case Links of
-		 undefined -> ok;
-		 _ ->  lists:foreach(fun(Link) -> 
-                                         bind_refs(Link, State)
-				     end, Links),
-		       gen_server:cast(Protocol, {send, Payload})
+           undefined -> ok;
+           _ ->  lists:foreach(fun(Link) -> 
+                   bind_refs(Link, State)
+                 end, Links),
+                 gen_server:cast(Protocol, {send, Payload})
 	       end
     end
   catch
@@ -270,3 +241,111 @@ terminate(_, #state{channel = Channel}) ->
 code_change(_OldVsn, State, _Extra) ->
   {ok, State}.
 
+
+%% RabbitMQ command generators
+
+get_resource(client_exchange, SessionId, _ApiKey) ->
+  #bridge_resource{
+            name = SessionId,
+            rabbit_name = list_to_binary(["T_", SessionId]),
+            bridge_type = client_exchange,
+            rabbit_type = {exchange, <<"topic">>}};
+
+get_resource(client_queue, SessionId, _ApiKey) ->
+  #bridge_resource{
+            name = SessionId,
+            rabbit_name = list_to_binary(["C_", SessionId]),
+            bridge_type = client_queue,
+            rabbit_type = queue};
+
+get_resource(namespace, Namespace, _ApiKey) ->
+  #bridge_resource{
+            name = Namespace,
+            rabbit_name = list_to_binary(["T_", Namespace]),
+            bridge_type = namespace,
+            rabbit_type = {exchange, <<"topic">>}};
+
+get_resource(service, Service, ApiKey) ->
+  #bridge_resource{
+            name = Service,
+            rabbit_name = list_to_binary([<<"W_">>, Service, <<"_">>, ApiKey]),
+            bridge_type = service,
+            rabbit_type = queue};
+
+get_resource(channel, Channel, ApiKey) ->
+  #bridge_resource{
+            name = Channel,
+            rabbit_name = list_to_binary([<<"F_">>, Channel, <<"_">>, ApiKey]),
+            bridge_type = channel,
+            rabbit_type = {exchange, <<"fanout">>}}.
+
+declare(ResourceType, ResourceName, ApiKey, AMQPChannel) ->
+  Resource = get_resource(ResourceType, ResourceName, ApiKey),
+  case Resource of
+    #bridge_resource{rabbit_name = Name, rabbit_type = queue} ->
+      QueueDeclare = #'queue.declare'{queue = Name},
+      #'queue.declare_ok'{queue = QueueName} = amqp_channel:call(AMQPChannel, QueueDeclare);
+
+    #bridge_resource{rabbit_name = Name, rabbit_type = {exchange, ExchangeType}} ->
+      ExchangeDeclare = #'exchange.declare'{exchange = Name, type = ExchangeType},
+      #'exchange.declare_ok'{} = amqp_channel:call(AMQPChannel, ExchangeDeclare)
+
+  end,
+  {ok, Resource}.
+
+get_routing_key(_Sink = #bridge_resource{bridge_type = namespace, name = Name}, ApiKey) ->
+  list_to_binary([ApiKey, <<".named.#">>]);
+
+get_routing_key(#bridge_resource{bridge_type = client_queue, name = SessionId}, ApiKey) ->
+  list_to_binary( [ApiKey, <<".client.">>, SessionId, <<".#">>] );
+
+get_routing_key(#bridge_resource{bridge_type = service, name = Name}, ApiKey) ->
+  list_to_binary([ApiKey, <<".named.">>, Name, <<".#">>]);
+
+get_routing_key(#bridge_resource{bridge_type = channel, name = Name}, ApiKey) ->
+  list_to_binary([ApiKey, <<".channel.">>, Name, <<".#">>]);
+
+get_routing_key(_, _) ->
+  <<"">>.
+
+bind(Source = #bridge_resource{rabbit_type = {exchange, _}},
+     Sink = #bridge_resource{rabbit_type = queue}, ApiKey, Channel
+    ) ->
+  QueueBinding = #'queue.bind'{queue = Sink#bridge_resource.rabbit_name,
+                               exchange = Source#bridge_resource.rabbit_name,
+                               routing_key = get_routing_key(Sink, ApiKey)},
+  #'queue.bind_ok'{} = amqp_channel:call(Channel, QueueBinding),
+  ok;
+
+bind(Source = #bridge_resource{rabbit_type = {exchange, _}},
+     Sink = #bridge_resource{rabbit_type = {exchange, _}}, ApiKey, Channel
+    ) ->
+  ExchangeBinding = #'exchange.bind'{source      = Source#bridge_resource.rabbit_name,
+                             destination = Sink#bridge_resource.rabbit_name,
+                             routing_key = get_routing_key(Sink, ApiKey)},
+  #'exchange.bind_ok'{} = amqp_channel:call(Channel, ExchangeBinding),
+  ok.
+
+unbind(Source = #bridge_resource{rabbit_type = {exchange, _}},
+       Sink = #bridge_resource{rabbit_type = queue}, ApiKey, Channel
+      ) ->
+  QueueBinding = #'queue.unbind'{queue = Sink#bridge_resource.rabbit_name,
+                               exchange = Source#bridge_resource.rabbit_name,
+                               routing_key = get_routing_key(Sink, ApiKey)},
+  #'queue.unbind_ok'{} = amqp_channel:call(Channel, QueueBinding),
+  ok;
+
+unbind(Source = #bridge_resource{rabbit_type = {exchange, _}},
+       Sink = #bridge_resource{rabbit_type = {exchange, _}},ApiKey, Channel
+      ) ->
+  ExchangeBinding = #'exchange.unbind'{source      = Source#bridge_resource.rabbit_name,
+                             destination = Sink#bridge_resource.rabbit_name,
+                             routing_key = get_routing_key(Sink, ApiKey)},
+  #'exchange.unbind_ok'{} = amqp_channel:call(Channel, ExchangeBinding),
+  ok.
+
+
+consume_resource(#bridge_resource{rabbit_type = queue, rabbit_name = Name}, Channel) ->
+  Sub = #'basic.consume'{queue = Name, no_ack = true},
+  #'basic.consume_ok'{consumer_tag = Tag} = amqp_channel:subscribe(Channel, Sub, self()),
+  {ok, Tag}.
