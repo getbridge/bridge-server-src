@@ -1,6 +1,6 @@
 #!/bin/bash   
 set -e
-rm rel/bc -fr
+rm -rf rel/bc 
 ./rebar generate -f
 cd rel/bc/lib/
 echo -n "Unpacking .ez files"
