@@ -42,27 +42,9 @@ init([]) ->
 
     gateway_util:info("Establishing AMQP and declaring default and error exchange~n"),
 
-    #'exchange.declare_ok'{} = amqp_channel:call(Channel, #'exchange.declare'{exchange = <<"F_ERROR">>,
-                                                   type = <<"fanout">>}),
-
-    % QueueDeclare = #'queue.declare'{queue = <<"ERROR">>},
-    % #'queue.declare_ok'{queue = ErrorQueue} = amqp_channel:call(Channel, QueueDeclare),
-
-    % QueueBinding = #'queue.bind'{queue = <<"ERROR">>,
-    %                              exchange = <<"F_ERROR">>},
-    % #'queue.bind_ok'{} = amqp_channel:call(Channel, QueueBinding),
-
     #'exchange.declare_ok'{} = amqp_channel:call(Channel, #'exchange.declare'{exchange = <<"T_NAMED">>,
                                                    type = <<"topic">>
-                                                   % , arguments = [{"alternate-exchange", longstr, "F_ERROR"}]
                                                    }),
-
-    % Consumer = spawn(gateway_errqueue, loop, [Channel]),
-
-    % Sub = #'basic.consume'{queue = ErrorQueue},
-    % #'basic.consume_ok'{} = amqp_channel:subscribe(Channel, Sub, Consumer),
-    % amqp_channel:register_return_handler(Channel, Consumer),
-
     {ok, #state{connection = Connection}}.
 
 handle_call(get_new_channel, _From, State = #state{connection = Connection}) ->
