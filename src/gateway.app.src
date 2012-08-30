@@ -5,6 +5,7 @@
               {applications,[kernel,stdlib,inets,sockjs]},
               {mod,{gateway_app,[]}},
               {env,[{hostname,"localhost"},
+                    {redirector, false},
                     {web_port,8091},
                     {tcp_port,8090},
                     {https_port,8043},

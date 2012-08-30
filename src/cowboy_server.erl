@@ -39,12 +39,17 @@ init()->
         {[<<"ctl">>, cmd], ctl_handler, []}
       ]
    }],
-   cowboy:start_listener(ctl_http_listener, 1,
-                         cowboy_tcp_transport, [{port, CtlPort}],
-                         cowboy_http_protocol, [{dispatch, CtlDispatch}]),
+
+  case application:get_env(gateway, redirector) of
+    {ok, true} ->
+       cowboy:start_listener(ctl_http_listener, 1,
+                             cowboy_tcp_transport, [{port, CtlPort}],
+                             cowboy_http_protocol, [{dispatch, CtlDispatch}]),
+       io:format("~nRunning control server on port ~p~n~n", [CtlPort]);
+    _ -> ok
+  end,
 
   io:format("~nRunning on web port ~p and tcp port ~p~n", [WebPort, TCPPort]),
-  io:format("~nRunning control server on port ~p~n~n", [CtlPort]),
 
   receive
      _ -> ok
