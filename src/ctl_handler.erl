@@ -102,12 +102,12 @@ update_metering(PrivKey) ->
         end,
         if
           Result > 0 ->
-            ets:update_element(meter_table, PrivKey, {2, {false, Now, Result, Limit, PubKey}}),
+            ets:update_element(meter_table, PrivKey, {2, {false, WhenExpired, Result, Limit, PubKey}}),
             ok;
 
           true ->
             gen_server:cast(gateway_metrics, {send_app_usage, PrivKey, Limit}),
-            ets:update_element(meter_table, PrivKey, {2, {true, Now, 0, Limit, PubKey}}),
+            ets:update_element(meter_table, PrivKey, {2, {true, WhenExpired, 0, Limit, PubKey}}),
             ok
         end;
       true ->
